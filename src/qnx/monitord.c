@@ -115,6 +115,7 @@ static struct {
     uint32_t rec_dropped;
     uint64_t rec_written;
     uint64_t head_seq;                    /* last line written, 0 = none */
+    uint64_t broken_seq;                  /* first line that did not reach the disk, 0 = none */
     char head_hex[SHA256_HEX_LEN + 1];
     int rec_stop;
     pthread_t rec_tid;
@@ -455,6 +456,22 @@ static void wake_alarm(int n)
 /* ------------------------------------------------------------------ */
 /* recorder                                                            */
 
+/* Write all of buf, going on after a short or interrupted write. */
+static int write_all(int fd, const char *buf, size_t len)
+{
+    while (len > 0) {
+        ssize_t w = write(fd, buf, len);
+        if (w < 0 && errno == EINTR) continue;
+        if (w <= 0) {
+            if (w == 0) errno = EIO;
+            return -1;
+        }
+        buf += w;
+        len -= (size_t)w;
+    }
+    return 0;
+}
+
 static void *recorder_main(void *arg)
 {
     int fd = *(int *)arg;
@@ -465,6 +482,7 @@ static void *recorder_main(void *arg)
     int64_t last_sync = rt_now_ns();
     int64_t last_head = last_sync;
     uint64_t logged_seq = 0;
+    uint64_t broken = 0; /* first line not on disk; from then on nothing more is written */
 
     for (;;) {
         int n = 0, stop = 0;
@@ -489,14 +507,24 @@ static void *recorder_main(void *arg)
                 mlog(SLOG2_ERROR, "record: entry for %s refused", batch[i].bed);
                 continue;
             }
-            if (write(fd, line, (size_t)len) != len) mlog(SLOG2_ERROR, "record: write failed: %s", strerror(errno));
+            if (broken) continue;
+            if (write_all(fd, line, (size_t)len) != 0) {
+                broken = chain.next_seq - 1;
+                mlog(SLOG2_ERROR, "record: line %llu could not be written (%s); the record stops there",
+                     (unsigned long long)broken, strerror(errno));
+                continue;
+            }
             M.rec_written++;
             if (batch[i].kind == REC_ALARM) alarm = 1;
         }
         int64_t now = rt_now_ns();
         int synced = 0;
-        if ((alarm || now - last_sync >= 1000000000LL) && n > 0) {
-            fsync(fd); /* an alarm is on disk before the next batch */
+        if ((alarm || now - last_sync >= 1000000000LL) && n > 0 && !broken) {
+            if (fsync(fd) == -1) { /* an alarm is on disk before the next batch */
+                broken = logged_seq + 1; /* nothing after the last logged head is known to be on disk */
+                mlog(SLOG2_ERROR, "record: fsync failed (%s); the record is good up to line %llu at most",
+                     strerror(errno), (unsigned long long)logged_seq);
+            }
             last_sync = now;
             synced = 1;
         }
@@ -504,9 +532,14 @@ static void *recorder_main(void *arg)
          * after it. The head (the last line's number and hash) goes to the
          * system log once a second, after the fsync, so a rewritten or
          * shortened file no longer matches a head logged before it. */
-        if (now - last_head >= 1000000000LL && chain.next_seq - 1 != logged_seq) {
+        if (!broken && now - last_head >= 1000000000LL && chain.next_seq - 1 != logged_seq) {
             if (!synced) { /* the logged head is always on disk */
-                fsync(fd);
+                if (fsync(fd) == -1) {
+                    broken = logged_seq + 1;
+                    mlog(SLOG2_ERROR, "record: fsync failed (%s); the record is good up to line %llu at most",
+                         strerror(errno), (unsigned long long)logged_seq);
+                    continue;
+                }
                 last_sync = now;
             }
             last_head = now;
@@ -515,8 +548,12 @@ static void *recorder_main(void *arg)
         }
         if (stop) break;
     }
-    fsync(fd);
+    if (!broken && fsync(fd) == -1) broken = logged_seq + 1;
     close(fd);
+    if (broken) { /* a head now could name a line that is not on disk */
+        M.broken_seq = broken;
+        return NULL;
+    }
     M.head_seq = chain.next_seq - 1;
     memcpy(M.head_hex, chain.prev_hex, sizeof M.head_hex);
     if (M.head_seq != logged_seq)
@@ -608,7 +645,10 @@ static void finish(void)
     printf("phila-monitord: technical alarms %u, max %.1f us\n", nt, t[4]);
     printf("phila-monitord: intake ran at priority %d at most; dropped alarm events %u, dropped record lines %u, "
            "refused messages %u\n", M.intake_max_prio, M.evq_dropped, M.rec_dropped, M.refused);
-    if (M.record_path != NULL && M.head_seq > 0)
+    if (M.record_path != NULL && M.broken_seq > 0)
+        printf("phila-monitord: the record broke at line %llu (a write to the disk failed); no head\n",
+               (unsigned long long)M.broken_seq);
+    else if (M.record_path != NULL && M.head_seq > 0)
         printf("phila-monitord: record head seq=%llu hash=%s\n", (unsigned long long)M.head_seq, M.head_hex);
     mlog(SLOG2_INFO, "stopped: %u clinical alarms, max latency %.1f us", n, s[4]);
     fflush(stdout);

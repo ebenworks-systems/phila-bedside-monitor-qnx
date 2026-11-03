@@ -16,8 +16,9 @@
  *   - a sensor that stops reading cannot clear the alarm: while one is
  *     missing, the alarm clears only if the bed would still be low with that
  *     sensor's last good reading; if the alarm is held on such last
- *     readings alone and the readings present raise the score again, that
- *     is a new onset the nurse has not acknowledged;
+ *     readings alone and the sensors that kept reading raise the score
+ *     again, that is a new onset the nurse has not acknowledged, while the
+ *     missing sensor coming back with the same abnormal reading is not;
  *   - a technical alarm starts when a sensor reports "no reading" or has
  *     been silent for three of its sampling periods, and clears with the
  *     next good reading.
@@ -79,6 +80,7 @@ typedef struct {
     news2_risk_t alarm_level;     /* highest band of the active alarm; NEWS2_RISK_LOW when none */
     bool acked;                   /* a nurse acknowledged the current alarm */
     bool held_stale;              /* the alarm is open only on the last readings of missing sensors */
+    uint8_t held_mask;            /* those sensors, one bit per sensor_t */
     uint32_t readings;
 } bed_t;
 

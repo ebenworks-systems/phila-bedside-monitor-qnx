@@ -208,10 +208,11 @@ Intake shows its base priority, 10; it runs at 50 only while it serves a sensor.
 
 The alarm thread and the recorder share a queue, and its lock is a mutex with `PTHREAD_PRIO_INHERIT`. If the recorder (priority 30) holds the lock when the alarm thread (60) wants it, QNX raises the recorder to 60 until it lets go, so a program at priority 35 cannot stretch that wait.
 
-Stop the display with Ctrl-C and the monitor with `slay`, which sends it SIGTERM. The monitor finishes the record and prints its head as it stops. Then check the record on QNX and again, independently, on your PC:
+Stop the display with Ctrl-C and the monitor with `slay`, which sends it SIGTERM. `slay` returns at once, and the monitor takes a moment to finish the record and print its head, so wait until it has gone before reading the file. Then check the record on QNX and again, independently, on your PC:
 
 ```sh
-slay phila-monitord              # prints "record head seq=N hash=..."
+slay phila-monitord              # the monitor prints "record head seq=N hash=..." as it stops
+while pidin -p phila-monitord -f a | grep -q '[0-9]'; do sleep 1; done
 bin/phila-export runs/ward.jsonl runs/ward-export.json
 # on the host
 scripts/qemu-vm.sh get ~/qnx-vm/phila /data/phila/runs/ward.jsonl ward.jsonl

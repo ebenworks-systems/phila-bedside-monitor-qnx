@@ -248,6 +248,40 @@ int main(void)
     /* The same band again from the readings present is a wobble, not a new alarm. */
     CHECK_EQ_INT(feed(0, SENSOR_RESP, 26, 0, 40 * MS), 0);
 
+    /* The missing sensor coming back with the abnormal reading it had is the
+     * alarm the nurse already acknowledged, not a new one. */
+    ward_init(&w, &sc, 0);
+    all_normal(0, 0);
+    n = feed(0, SENSOR_PULSE_OX, 89, 70, 10 * MS);
+    CHECK_EQ_INT(n, 1);
+    CHECK(ward_ack(&w, 0));
+    n = feed(0, SENSOR_PULSE_OX, -1, -1, 20 * MS); /* one "no reading" sample */
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_TECH_ON);
+    CHECK(w.bed[0].held_stale);
+    n = feed(0, SENSOR_PULSE_OX, 89, 70, 30 * MS); /* back, still 89 */
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_TECH_CLEAR);
+    CHECK(w.bed[0].acked);
+    CHECK(!w.bed[0].held_stale);
+    CHECK_EQ_INT(w.bed[0].alarm_level, NEWS2_RISK_LOW_MEDIUM);
+    /* The same after a silence of three periods, as under a CPU hog. */
+    int64_t back = 30 * MS + 5000 + 3 * ox_period;
+    for (int b = 0; b < SCN_BEDS; b++)
+        for (int s = 0; s < SENSOR_COUNT; s++)
+            if (s != SENSOR_PULSE_OX || b != 0) w.bed[b].last_ns[s] = back; /* others fresh */
+    n = ward_check_silence(&w, back, ev, 8);
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_TECH_ON);
+    n = feed(0, SENSOR_PULSE_OX, 89, 70, back + 10 * MS);
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_TECH_CLEAR);
+    CHECK(w.bed[0].acked);
+    /* Back and normal: the alarm clears as before. */
+    n = feed(0, SENSOR_PULSE_OX, 97, 70, back + 20 * MS);
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_ALARM_CLEAR);
+
     /* Events beyond the caller's array are counted, not written. */
     ward_init(&w, &sc, 0);
     n = ward_check_silence(&w, 60000 * MS, ev, 2);

@@ -33,18 +33,28 @@ static bool in_range(sensor_t s, const int16_t v[2])
     }
 }
 
+/* Put the sensor's parameters at values that score 0 on every scale. */
+static void set_neutral(const bed_t *bed, news2_obs_t *o, int s)
+{
+    switch (s) {
+    case SENSOR_PULSE_OX:
+        o->spo2 = bed->scale == SPO2_SCALE_2 ? 90 : 97;
+        o->pulse = 70;
+        break;
+    case SENSOR_RESP: o->resp_rate = 16; break;
+    case SENSOR_BP: o->systolic = 120; break;
+    case SENSOR_TEMP: o->temp_dc = 370; break;
+    default: break;
+    }
+}
+
 void ward_obs(const ward_t *w, int b, news2_obs_t *o)
 {
     const bed_t *bed = &w->bed[b];
     o->spo2_scale = bed->scale;
     o->on_oxygen = bed->on_oxygen;
     o->consciousness = bed->acvpu;
-    /* Neutral values score 0 on every scale. */
-    o->spo2 = bed->scale == SPO2_SCALE_2 ? 90 : 97;
-    o->pulse = 70;
-    o->resp_rate = 16;
-    o->systolic = 120;
-    o->temp_dc = 370;
+    for (int s = 0; s < SENSOR_COUNT; s++) set_neutral(bed, o, s);
     if (bed->have[SENSOR_PULSE_OX]) {
         o->spo2 = bed->val[SENSOR_PULSE_OX][0];
         o->pulse = bed->val[SENSOR_PULSE_OX][1];
@@ -52,6 +62,18 @@ void ward_obs(const ward_t *w, int b, news2_obs_t *o)
     if (bed->have[SENSOR_RESP]) o->resp_rate = bed->val[SENSOR_RESP][0];
     if (bed->have[SENSOR_BP]) o->systolic = bed->val[SENSOR_BP][0];
     if (bed->have[SENSOR_TEMP]) o->temp_dc = bed->val[SENSOR_TEMP][0];
+}
+
+/* The band from the readings present, leaving out the sensors in mask. */
+static news2_risk_t risk_without(const ward_t *w, int b, uint8_t mask)
+{
+    news2_obs_t o;
+    ward_obs(w, b, &o);
+    for (int s = 0; s < SENSOR_COUNT; s++)
+        if (mask & (1u << s)) set_neutral(&w->bed[b], &o, s);
+    news2_result_t r;
+    if (news2_assess(&o, &r) != NEWS2_OK) return NEWS2_RISK_HIGH; /* cannot happen */
+    return r.risk;
 }
 
 /* The band the bed would be in if each missing sensor still read what it
@@ -128,6 +150,7 @@ static int rescore(ward_t *w, int b, int64_t t_sched, int64_t t_sample, int64_t 
         bed->alarm_level = level;
         bed->acked = false;
         bed->held_stale = false;
+        bed->held_mask = 0;
         n = push(ev, cap, n, &e);
     } else if (level == NEWS2_RISK_LOW && bed->alarm_level != NEWS2_RISK_LOW) {
         if (bed->complete || last_known_risk(w, b) == NEWS2_RISK_LOW) {
@@ -136,20 +159,30 @@ static int rescore(ward_t *w, int b, int64_t t_sched, int64_t t_sample, int64_t 
             bed->alarm_level = NEWS2_RISK_LOW;
             bed->acked = false;
             bed->held_stale = false;
+            bed->held_mask = 0;
             n = push(ev, cap, n, &e);
         } else {
+            /* Held on the last readings of the sensors missing now. */
             bed->held_stale = true;
+            bed->held_mask = 0;
+            for (int s = 0; s < SENSOR_COUNT; s++)
+                if (!bed->have[s]) bed->held_mask |= (uint8_t)(1u << s);
         }
     } else if (level != NEWS2_RISK_LOW && bed->held_stale) {
-        /* The alarm was open only on a missing sensor's last reading, and the
-         * readings present now call for one on their own: a new onset, which
-         * the nurse has not acknowledged. */
-        e.kind = BEV_ALARM_ON;
-        e.level = bed->alarm_level;
-        reason_for(bed, e.reason, sizeof e.reason);
-        bed->acked = false;
+        /* The alarm was open only on the missing sensors' last readings, and
+         * the band is above low again. If the sensors that kept reading put
+         * it there, it is a new onset the nurse has not acknowledged. If it
+         * is a missing sensor back with the abnormal reading it had, it is
+         * the alarm the nurse already saw: it stays as it was. */
+        if (risk_without(w, b, bed->held_mask) != NEWS2_RISK_LOW) {
+            e.kind = BEV_ALARM_ON;
+            e.level = bed->alarm_level;
+            reason_for(bed, e.reason, sizeof e.reason);
+            bed->acked = false;
+            n = push(ev, cap, n, &e);
+        }
         bed->held_stale = false;
-        n = push(ev, cap, n, &e);
+        bed->held_mask = 0;
     }
     /* A fall to a lower band that is still above low changes nothing: the
      * alarm holds the highest band it reached until the bed is back to low,

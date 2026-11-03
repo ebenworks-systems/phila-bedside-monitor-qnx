@@ -85,9 +85,10 @@ cat /dev/phila/latency /dev/phila/threads
 slog2info | grep phila
 ```
 
-Stop the monitor with `slay phila-monitord` (it finishes the record and prints its latency summary and the record's head), then check and export the record:
+Stop the monitor with `slay phila-monitord`. It finishes the record and prints its latency summary and the record's head; wait until it has gone, then check and export the record:
 
 ```sh
+while pidin -p phila-monitord -f a | grep -q '[0-9]'; do sleep 1; done
 bin/phila-export runs/ward.jsonl runs/ward-export.json     # on QNX
 python3 tools/verify_record.py ward.jsonl                   # on the host, after scripts/qemu-vm.sh get
 python3 tools/verify_record.py --head SEQ HASH ward.jsonl   # SEQ and HASH from the "record head" line it printed
