@@ -1,8 +1,8 @@
 /*
  * test_deadline.c - a sensor's deadline grid with a one-shot timer: a late
- * pulse serves its own deadline and counts the ones it passed as missed, a
- * deadline already passed when the timer is armed again is skipped, an early
- * pulse takes no reading, and a stall never moves the deadlines after it.
+ * pulse serves its own deadline and counts the ones it passed as missed, an
+ * early pulse takes no reading, a deadline that passed during the send is
+ * served late and measured, and a stall never moves the deadlines after it.
  * SPDX-License-Identifier: MIT
  */
 #include "check.h"
@@ -11,11 +11,10 @@
 #define US 1000LL
 #define MS 1000000LL
 
-/* A timer that never fires before its deadline and wakes the thread after a
- * small delay, except during a stall, when nothing runs until the stall
- * ends; the thread then needs `work` to send the reading before arming
- * the next deadline. Returns the number of readings taken; fills the worst
- * wake after `settle` and the earliest wake overall. */
+/* A timer that never fires before its deadline and fires at once when it is
+ * armed for a deadline already passed; it wakes the thread `wake` later,
+ * except during a stall, when nothing runs until the stall ends. The thread
+ * then needs `work` to send the reading before it arms the next deadline. */
 typedef struct {
     int64_t stall_at, stall_len; /* one stall of the whole machine */
     int64_t wake, work;          /* timer wake and send time */
@@ -23,7 +22,7 @@ typedef struct {
 } sim_t;
 
 typedef struct {
-    int64_t readings, missed, skipped, last_latest, armed;
+    int64_t readings, missed, last_latest, armed;
     int64_t worst_settled_wake, earliest_wake;
 } sim_out_t;
 
@@ -36,10 +35,12 @@ static sim_out_t simulate(const sim_t *s, int64_t start, int64_t period, int64_t
 {
     deadline_t d;
     dl_init(&d, start, period, 0);
-    sim_out_t o = {0, 0, 0, -1, 0, 0, INT64_MAX};
+    sim_out_t o = {0, 0, -1, 0, 0, INT64_MAX};
+    int64_t armed_at = 0;
     for (;;) {
         int64_t due = dl_at(&d, d.armed);
-        int64_t now = after_stall(s, due + s->wake);
+        int64_t fires = due > armed_at ? due : armed_at;
+        int64_t now = after_stall(s, fires + s->wake);
         if (now >= until) break;
         deadline_reading_t r;
         if (!dl_pulse(&d, now, &r)) break; /* cannot happen: this timer is never early */
@@ -49,7 +50,8 @@ static sim_out_t simulate(const sim_t *s, int64_t start, int64_t period, int64_t
         o.readings++;
         o.missed += r.missed;
         o.last_latest = r.latest;
-        o.skipped += dl_advance(&d, &r, after_stall(s, now + s->work));
+        dl_advance(&d, &r);
+        armed_at = after_stall(s, now + s->work);
     }
     o.armed = d.armed;
     return o;
@@ -68,7 +70,7 @@ int main(void)
     CHECK_EQ_INT(r.served, 0);
     CHECK_EQ_INT(r.latest, 0);
     CHECK_EQ_INT(r.missed, 0);
-    CHECK_EQ_INT(dl_advance(&d, &r, 1000 * MS + 90 * US), 0);
+    dl_advance(&d, &r);
     CHECK_EQ_INT(d.armed, 1);
 
     /* A pulse before the armed deadline takes no reading: with no allowance
@@ -88,7 +90,7 @@ int main(void)
     CHECK_EQ_INT(r.served, 4);
     CHECK_EQ_INT(r.latest, 4);
     CHECK_EQ_INT(r.missed, 0);
-    CHECK_EQ_INT(dl_advance(&d, &r, 400 * MS), 0);
+    dl_advance(&d, &r);
     CHECK_EQ_INT(d.armed, 5);
 
     /* A pulse held up past further deadlines serves the armed one, late,
@@ -99,20 +101,22 @@ int main(void)
     CHECK_EQ_INT(r.served, 2);
     CHECK_EQ_INT(r.latest, 5);
     CHECK_EQ_INT(r.missed, 3);
-    CHECK_EQ_INT(dl_advance(&d, &r, 1531 * MS), 0);
+    dl_advance(&d, &r);
     CHECK_EQ_INT(d.armed, 6);
     CHECK_EQ_INT(dl_at(&d, d.armed), 1600 * MS);
 
-    /* Deadlines that pass while the reading is sent are skipped and counted;
-     * the next armed deadline is the first still ahead. */
+    /* A send that outlasts the next deadline: the timer is still armed for
+     * it, fires at once, and the reading for it is late from its own
+     * deadline, with the deadlines after it that also passed missed. */
     CHECK(dl_pulse(&d, 1600 * MS + 20 * US, &r));
     CHECK_EQ_INT(r.latest, 6);
-    CHECK_EQ_INT(dl_advance(&d, &r, 1850 * MS), 2); /* 7 and 8 */
-    CHECK_EQ_INT(d.armed, 9);
-    /* A deadline that is due at the very moment of arming counts as passed. */
-    CHECK(dl_pulse(&d, 1900 * MS, &r));
-    CHECK_EQ_INT(dl_advance(&d, &r, 2000 * MS), 1);
-    CHECK_EQ_INT(d.armed, 11);
+    dl_advance(&d, &r);
+    CHECK_EQ_INT(d.armed, 7);
+    CHECK(dl_pulse(&d, 1850 * MS, &r)); /* fired at once when armed at 1850 ms */
+    CHECK_EQ_INT(r.served, 7);
+    CHECK_EQ_INT(r.latest, 8);
+    CHECK_EQ_INT(r.missed, 1);
+    CHECK_EQ_INT(1850 * MS - dl_at(&d, r.served), 150 * MS); /* the delay that is measured */
 
     /* Before deadline 0 nothing is taken. */
     dl_init(&d, 1000 * MS, 100 * MS, 0);
@@ -125,11 +129,10 @@ int main(void)
     /* Simulated stalls of 330 ms and 170 ms on a 100 ms sensor whose grid
      * starts at 500 ms: after the stall every reading is back on its own
      * deadline (wake back to the timer's 30 us), no reading comes before its
-     * deadline, and every deadline before the armed one is a reading, missed
-     * or skipped. The 330 ms stall
-     * from 4037 ms holds up the deadlines at 4100, 4200 and 4300 ms: one
-     * late reading and two missed; the 170 ms one from 8061 ms those at 8100
-     * and 8200 ms: one late reading and one missed. */
+     * deadline, and every deadline before the armed one is a reading or
+     * missed. The 330 ms stall from 4037 ms holds up the deadlines at 4100,
+     * 4200 and 4300 ms: one late reading and two missed; the 170 ms one from
+     * 8061 ms those at 8100 and 8200 ms: one late reading and one missed. */
     const int64_t stalls[][3] = {{4000 * MS + 37 * MS, 330 * MS, 2}, {8000 * MS + 61 * MS, 170 * MS, 1}};
     for (int i = 0; i < 2; i++) {
         sim_t s = {stalls[i][0], stalls[i][1], 30 * US, 200 * US, 100 * MS};
@@ -137,21 +140,23 @@ int main(void)
         CHECK_EQ_INT(o.worst_settled_wake, 30 * US);
         CHECK(o.earliest_wake >= 0);
         CHECK_EQ_INT(o.missed, stalls[i][2]);
-        CHECK_EQ_INT(o.skipped, 0);
-        CHECK_EQ_INT(o.readings + o.missed + o.skipped, o.armed);
+        CHECK_EQ_INT(o.readings + o.missed, o.armed);
         CHECK_EQ_INT(o.armed, o.last_latest + 1);
     }
 
-    /* A send that takes longer than a period skips deadlines every time,
-     * counts each, and stays on the grid. */
+    /* A send that takes 250 ms on a 100 ms sensor: the sensor falls behind
+     * and the delays show it. Deadline 0 is read at 30 us; deadline 1 fires
+     * when it is armed at 250.03 ms and is read 150.06 ms late, standing for
+     * deadline 2 as well; then deadline 3 at 500.06 ms, 200.09 ms late,
+     * standing for 3 to 5; and so on, every deadline a reading or missed. */
     {
         sim_t s = {0, 0, 30 * US, 250 * MS, 0};
         sim_out_t o = simulate(&s, 0, 100 * MS, 10000 * MS);
-        CHECK_EQ_INT(o.readings, 34); /* deadlines 0, 3, 6, ... 99 */
-        CHECK_EQ_INT(o.skipped, 68);
-        CHECK_EQ_INT(o.missed, 0);
-        CHECK_EQ_INT(o.readings + o.missed + o.skipped, o.armed);
-        CHECK_EQ_INT(o.worst_settled_wake, 30 * US);
+        CHECK(o.worst_settled_wake > 100 * MS);
+        CHECK(o.earliest_wake >= 0);
+        CHECK(o.missed > 0);
+        CHECK_EQ_INT(o.readings + o.missed, o.armed);
+        CHECK_EQ_INT(o.armed, o.last_latest + 1);
     }
 
     return check_report("deadline");

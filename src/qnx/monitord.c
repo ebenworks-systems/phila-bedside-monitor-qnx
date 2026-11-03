@@ -635,6 +635,8 @@ static void finish(void)
      * takes no more, so the record, latency.csv and the summary below hold
      * the same alarms. The lock is never given back; the process exits. */
     pthread_mutex_lock(&M.alarm_lock);
+    /* Events queued from here on are never raised; they are not drops. */
+    uint32_t evq_dropped = M.evq_dropped;
     rec_event("WARD", "monitor stopped after %.1f s", (double)(rt_now_ns() - M.start_ns) / 1e9);
     pthread_mutex_lock(&M.rec_lock);
     M.rec_stop = 1;
@@ -656,7 +658,7 @@ static void finish(void)
            w[4], p[1], p[4]);
     printf("phila-monitord: technical alarms %u, max %.1f us\n", nt, t[4]);
     printf("phila-monitord: intake ran at priority %d at most; dropped alarm events %u, dropped record lines %u, "
-           "refused messages %u\n", M.intake_max_prio, M.evq_dropped, M.rec_dropped, M.refused);
+           "refused messages %u\n", M.intake_max_prio, evq_dropped, M.rec_dropped, M.refused);
     if (M.record_path != NULL && M.broken_seq > 0)
         printf("phila-monitord: the record broke at line %llu (a write to the disk failed); no head\n",
                (unsigned long long)M.broken_seq);

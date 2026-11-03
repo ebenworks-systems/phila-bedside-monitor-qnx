@@ -45,9 +45,10 @@ int64_t dl_at(const deadline_t *d, int64_t k);
  * same deadline again. Otherwise fills *r and returns true. */
 bool dl_pulse(const deadline_t *d, int64_t now, deadline_reading_t *r);
 
-/* After the reading for r->latest, at now: arm the first deadline after
- * r->latest that is still ahead of now. Returns how many deadlines were
- * skipped because they had already passed (counted as missed; normally 0). */
-uint32_t dl_advance(deadline_t *d, const deadline_reading_t *r, int64_t now);
+/* After the reading for r->latest: arm the deadline after it, on the grid.
+ * If that deadline has already passed (the reading took long to send), the
+ * timer fires at once and dl_pulse() serves it late, so the delay is
+ * measured, and counts any deadline after it that also passed as missed. */
+void dl_advance(deadline_t *d, const deadline_reading_t *r);
 
 #endif

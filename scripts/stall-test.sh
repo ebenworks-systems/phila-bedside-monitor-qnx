@@ -58,6 +58,7 @@ t0="$(date +%s.%N)"
 echo "$(date '+%H:%M:%S') stall test $name: designed, ${secs} s, no load; host load $load_before"
 
 stall_lines=()
+trap 'kill -CONT "$pid0" 2>/dev/null' EXIT INT TERM   # never leave the VM frozen
 for s in "${stalls[@]}"; do
     read -r at len <<< "$s"
     while awk -v t0="$t0" -v at="$at" -v now="$(date +%s.%N)" 'BEGIN {exit !(now - t0 < at)}'; do sleep 0.05; done

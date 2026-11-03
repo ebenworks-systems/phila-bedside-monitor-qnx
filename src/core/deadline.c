@@ -37,15 +37,7 @@ bool dl_pulse(const deadline_t *d, int64_t now, deadline_reading_t *r)
     return true;
 }
 
-uint32_t dl_advance(deadline_t *d, const deadline_reading_t *r, int64_t now)
+void dl_advance(deadline_t *d, const deadline_reading_t *r)
 {
-    int64_t next = r->latest + 1;
-    int64_t ahead = latest_at(d, now) + 1; /* the first deadline after now */
-    uint32_t skipped = 0;
-    if (ahead > next) {
-        skipped = (uint32_t)(ahead - next);
-        next = ahead;
-    }
-    d->armed = next;
-    return skipped;
+    d->armed = r->latest + 1;
 }

@@ -111,7 +111,8 @@ def main(argv):
         return 1
     root = argv[1]
     chart = argv[argv.index("--chart") + 1] if "--chart" in argv else None
-    found = sorted(d for d in os.listdir(root) if os.path.isfile(os.path.join(root, d, "latency.csv")))
+    found = sorted(d for d in (os.listdir(root) if os.path.isdir(root) else [])
+                   if os.path.isfile(os.path.join(root, d, "latency.csv")))
     cases = [c for c in ORDER if c in found] + [c for c in found if c not in ORDER]
     for c in cases:
         LABELS.setdefault(c, c)

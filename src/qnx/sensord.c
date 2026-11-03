@@ -115,7 +115,7 @@ static void *sensor_main(void *arg)
     memset(&msg, 0, sizeof msg);
     msg.type = PHILA_MSG_READING;
     msg.sensor = (uint16_t)ctx->sensor;
-    uint32_t carry = 0; /* deadlines skipped since the last message */
+    uint32_t carry = 0; /* missed deadlines of a reading whose send failed */
 
     for (;;) {
         struct _pulse p;
@@ -167,11 +167,9 @@ static void *sensor_main(void *arg)
         }
 
         /* Armed after the send, so the reading's own path is the same as
-         * before; a deadline that passed meanwhile is skipped and counted
-         * as missed in the next message. */
-        uint32_t skipped = dl_advance(&dl, &r, rt_now_ns());
-        ctx->missed += skipped;
-        carry += skipped;
+         * before. A next deadline that passed during the send fires at once
+         * and is served late, with its delay measured. */
+        dl_advance(&dl, &r);
         if (arm(timer, dl_at(&dl, dl.armed)) == -1) {
             perror("phila-sensord: timer_settime");
             break;
