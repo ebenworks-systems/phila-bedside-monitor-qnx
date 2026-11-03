@@ -2,6 +2,8 @@
 
 **Prototype for a hackathon, not a medical device.**
 
+This report is for the hackathon's judges and for QNX developers who want to know what the monitor's priority design does to alarm latency, and how far a virtual machine can measure it. Everything in it can be run again from this repository.
+
 In the cases the host disturbed least, the priority design held. Under two threads spinning at FIFO priority 35 on both virtual CPUs, which also stop the guest's network stack and SSH, the designed monitor put 2987 clinical alarms on the board with a median of 50.6 µs from the reading's deadline and missed no sensor deadline; with no load the median was 88.7 µs. The naive build under the same hog raised 188 alarms, missed 3636 sensor deadlines, and its slowest alarm took 279,954.2 ms, the whole time the hog ran: at priority 10 the naive monitor cannot run while a FIFO thread at 35 holds both processors, however quiet or busy the host is.
 
 The two cases with the hog at priority 10 ran while other jobs saturated the host, which kept the virtual CPUs waiting for 164,274.5 ms and 169,374.2 ms of their 308-second runs, so their figures describe the host more than the monitor. They also showed that after a long host stall a sensor's periodic timer keeps the late phase, which this build does not guard against.
@@ -22,7 +24,7 @@ The guest's clock is in the last line of the results: QNX 8.0 keeps a 1 ms tick,
 
 Each case records the host's one-minute load average when it started and ended, and how long the host kept the guest's two virtual CPU threads waiting for a processor during the case (their run-queue wait from Linux's `/proc/PID/task/TID/schedstat`). The run-queue wait is the better measure: a load average counts everything runnable on a 20-thread host, while the wait is the delay the host imposed on this VM.
 
-The plan was to start each case only when the host's one-minute load was below 2.5. On this 20-thread host it never fell that low during the night. The first case started at 01:40:23 KST after the full 30-minute wait, at a load of 8.48. From about 02:00 other jobs kept the host far busier for most of the night, so each remaining case started when the one-minute load dropped below 10, except the naive case under the priority-35 hog, which started at once because its result does not depend on the host. In two cases the load rose far above 10 while the case ran; the host's hold table shows how much each case was disturbed.
+The plan was to start each case only when the host's one-minute load was below 2.5. On this 20-thread host it never fell that low during the night. The first case started at 01:40:23 KST after the full 30-minute wait, at a load of 8.48. From about 02:00 other jobs kept the host far busier for most of the night, so each remaining case started when the one-minute load dropped below 10, except the naive case under the priority-35 hog, which started at once because its result does not depend on the host. In two cases the load rose far above 10 while the case ran; the host's hold table shows how much each case was disturbed. No case could be run again that night: from 05:41 KST, when the last case ended, a repeat waited for a one-minute load under 10, checking every 30 seconds, and found none before it was stopped at 06:01 KST. The one-minute load of 216.72 after the last case shows how busy the host still was.
 
 ## Results
 
@@ -100,7 +102,7 @@ Guest clock (pidin syspage=qtime, every case): tick 1 ms (nsec_inc 1000000 ns); 
 
 ### The priority design under load
 
-Under the FIFO-35 hog the designed monitor's total median was 50.6 µs and its 99th percentile 442.1 µs, against 88.7 µs and 450.1 µs with no load, and its alarm pipeline's median was 21.9 µs against 25.5 µs. The hog sits below every thread on the alarm path, and the alarm path ran as if it were not there. It even ran a little faster, probably because the spinning hog kept the virtual CPUs from going idle: with no load they were put on a processor 107,422 times and under the hog 35,837 times, and a virtual CPU that has gone idle waits for the host to wake it and schedule it again.
+Under the FIFO-35 hog the designed monitor's 99th percentile was 442.1 µs, against 450.1 µs with no load, and its alarm pipeline's median was 21.9 µs against 25.5 µs. The hog sits below every thread on the alarm path, and the alarm path ran as if it were not there. It even ran a little faster, probably because the spinning hog kept the virtual CPUs from going idle: with no load they were put on a processor 107,422 times and under the hog 35,837 times, and a virtual CPU that has gone idle waits for the host to wake it and schedule it again.
 
 ### High-resolution timers against the tick
 
@@ -108,7 +110,7 @@ With no load, the designed sensors' timer wake had a median of 62.8 µs. On the 
 
 ### The naive build
 
-Under the FIFO-35 hog the naive monitor stopped. It raised 188 alarms in 300 seconds, missed 3636 sensor deadlines and raised 20 technical alarms, and its slowest alarm took 279,954.2 ms, which is the hog's run. When its alarm pipeline did run, its median was 31.2 µs; the delay is all in waiting for a processor. Under the RR-10 hog the naive monitor shares the processors with the hog in round-robin slices, and its alarm pipeline's median was 2,457.5 µs, against 28.4 µs for the designed monitor under the same hog. The host held the virtual CPUs for similar times in those two cases (164,274.5 ms and 169,374.2 ms), so the comparison between them is fair, but neither is a figure for an undisturbed host.
+Under the FIFO-35 hog the naive monitor stopped for the whole of the hog's run, and 20 sensor silences raised technical alarms. When its alarm pipeline did run, its median was 31.2 µs; the delay is all in waiting for a processor. Under the RR-10 hog the naive monitor shares the processors with the hog in round-robin slices, and its alarm pipeline's median was 2,457.5 µs, against 28.4 µs for the designed monitor under the same hog. The host held the virtual CPUs for similar times in those two cases, so the comparison between them is fair, but neither is a figure for an undisturbed host.
 
 ### The timer phase after a stall
 
@@ -122,7 +124,7 @@ Even in those three cases the 99.9th percentile and the maximum come from a few 
 
 ### Technical alarms and the monitor's own summary
 
-Beyond the four start-up alarms, the extra technical alarms in the disturbed and starved cases are sensors that went silent for three periods while the host or the hog held them. The monitor's own summary line in `monitor.log` can count one alarm more than `latency.csv`, because the alarm thread is still running while the monitor writes the file at the end; it did once, in the tick-timer case. The tables here come from `latency.csv`.
+The extra technical alarms in the disturbed and starved cases are sensors that went silent for three periods while the host or the hog held them. The monitor's own summary line in `monitor.log` can count one alarm more than `latency.csv`, because the alarm thread is still running while the monitor writes the file at the end; it did once, in the tick-timer case. The tables here come from `latency.csv`.
 
 ## What a virtual machine can and cannot show
 
