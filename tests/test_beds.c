@@ -77,25 +77,33 @@ int main(void)
     all_normal(0, 6000 * MS);
     CHECK_EQ_INT(w.bed[0].res.total, 0);
 
-    /* Start again from high and step down through medium to low. */
+    /* Start again: rise to high, then wobble. The alarm holds high until the
+     * bed is back to low, so the wobble raises nothing. */
     ward_init(&w, &sc, 0);
     all_normal(1, 0);
     feed(1, SENSOR_RESP, 26, 0, 10 * MS);           /* 3, red: low-medium */
     feed(1, SENSOR_PULSE_OX, 97, 120, 20 * MS);     /* 5: medium */
     n = feed(1, SENSOR_BP, 95, 0, 30 * MS);         /* 7: high */
-    CHECK_EQ_INT(ev[0].level, NEWS2_RISK_HIGH);
-    n = feed(1, SENSOR_BP, 120, 0, 40 * MS);        /* 5: medium, no event */
-    CHECK_EQ_INT(n, 0);
-    CHECK_EQ_INT(w.bed[1].alarm_level, NEWS2_RISK_MEDIUM);
-    n = feed(1, SENSOR_BP, 95, 0, 50 * MS);         /* 7 again: escalation */
     CHECK_EQ_INT(n, 1);
-    CHECK_EQ_INT(ev[0].kind, BEV_ALARM_UP);
+    CHECK_EQ_INT(ev[0].level, NEWS2_RISK_HIGH);
+    n = feed(1, SENSOR_BP, 120, 0, 40 * MS);        /* 5: medium now */
+    CHECK_EQ_INT(n, 0);
+    CHECK_EQ_INT(w.bed[1].res.risk, NEWS2_RISK_MEDIUM);
+    CHECK_EQ_INT(w.bed[1].alarm_level, NEWS2_RISK_HIGH);
+    n = feed(1, SENSOR_BP, 95, 0, 50 * MS);         /* 7 again: no repeat */
+    CHECK_EQ_INT(n, 0);
     feed(1, SENSOR_BP, 120, 0, 60 * MS);
-    feed(1, SENSOR_PULSE_OX, 97, 70, 70 * MS);      /* 3, red rr: low-medium */
-    CHECK_EQ_INT(w.bed[1].alarm_level, NEWS2_RISK_LOW_MEDIUM);
+    n = feed(1, SENSOR_PULSE_OX, 97, 70, 70 * MS);  /* 3, red rr: low-medium */
+    CHECK_EQ_INT(n, 0);
+    CHECK_EQ_INT(w.bed[1].alarm_level, NEWS2_RISK_HIGH);
     n = feed(1, SENSOR_RESP, 16, 0, 80 * MS);       /* 0 */
     CHECK_EQ_INT(n, 1);
     CHECK_EQ_INT(ev[0].kind, BEV_ALARM_CLEAR);
+    /* After clearing, a new rise is a new alarm. */
+    n = feed(1, SENSOR_RESP, 26, 0, 85 * MS);
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_ALARM_ON);
+    feed(1, SENSOR_RESP, 16, 0, 86 * MS);
 
     /* A sensor that reports no reading raises a technical alarm once. */
     n = feed(1, SENSOR_BP, -1, -1, 90 * MS);

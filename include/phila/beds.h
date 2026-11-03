@@ -9,8 +9,10 @@
  * 2017):
  *   - a clinical alarm starts when the bed's band rises from low to
  *     low-medium (a single red score), medium (5 or 6) or high (7 or more),
- *     and is raised again whenever the band goes up;
- *   - it clears when the band falls back to low;
+ *     and is raised again whenever the band goes above the highest band
+ *     this alarm has reached;
+ *   - it holds that band until the bed falls back to low, then clears, so a
+ *     score wobbling across a band edge does not repeat the alarm;
  *   - a technical alarm starts when a sensor reports "no reading" or has
  *     been silent for three of its sampling periods, and clears with the
  *     next good reading.
@@ -68,7 +70,7 @@ typedef struct {
     /* the score from the readings held */
     news2_result_t res;
     bool complete;                /* every parameter had a current reading */
-    news2_risk_t alarm_level;     /* NEWS2_RISK_LOW when no clinical alarm */
+    news2_risk_t alarm_level;     /* highest band of the active alarm; NEWS2_RISK_LOW when none */
     bool acked;                   /* a nurse acknowledged the current alarm */
     uint32_t readings;
 } bed_t;

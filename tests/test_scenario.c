@@ -60,6 +60,8 @@ int main(void)
     CHECK(t[1].first_on_ms > 30000);
     CHECK(t[1].high_ms > t[1].first_on_ms);
     CHECK(t[1].high_ms <= 210000);
+    CHECK(t[1].up <= 2); /* medium then high, with no repeats while the score wobbles */
+    CHECK_EQ_INT(t[1].on, 1);
     CHECK_EQ_INT(t[1].tech_on, 0);
     printf("BED-02: first alarm at %lld ms, high at %lld ms, %d escalations\n", (long long)t[1].first_on_ms,
            (long long)t[1].high_ms, t[1].up);

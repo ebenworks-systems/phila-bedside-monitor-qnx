@@ -364,7 +364,8 @@ static void *alarm_main(void *arg)
                 snprintf(r.bed, sizeof r.bed, "%s", scn_bed_id(e->bed));
                 if (measured) {
                     r.kind = REC_ALARM;
-                    r.level = e->kind == BEV_TECH_ON ? NEWS2_RISK_LOW : e->level;
+                    r.level = e->level;
+                    r.technical = e->kind == BEV_TECH_ON;
                     snprintf(r.reason, sizeof r.reason, "%s %s", bed_event_name(e->kind), e->reason);
                     r.latency_us = lat_us;
                 } else {

@@ -98,7 +98,7 @@ int rec_format(rec_chain_t *chain, const rec_entry_t *e, char *buf, size_t cap)
     case REC_ALARM:
         if (!text_ok(e->reason)) return -1;
         n = snprintf(buf + len, cap - len, ",\"level\":\"%s\",\"reason\":\"%s\",\"latency_us\":%" PRIu32,
-                     news2_risk_name(e->level), e->reason, e->latency_us);
+                     e->technical ? "technical" : news2_risk_name(e->level), e->reason, e->latency_us);
         break;
     case REC_EVENT:
         if (!text_ok(e->text)) return -1;

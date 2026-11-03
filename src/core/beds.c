@@ -115,11 +115,11 @@ static int rescore(ward_t *w, int b, int64_t t_sched, int64_t t_sample, int64_t 
         bed->alarm_level = NEWS2_RISK_LOW;
         bed->acked = false;
         n = push(ev, cap, n, &e);
-    } else if (level < bed->alarm_level) {
-        /* Still above low but lower than before: keep alarming at the new
-         * band, so a later rise counts as a fresh escalation. */
-        bed->alarm_level = level;
     }
+    /* A fall to a lower band that is still above low changes nothing: the
+     * alarm holds the highest band it reached until the bed is back to low,
+     * so a score wobbling across a band edge cannot raise the same alarm
+     * again and again. The current band is always in bed->res.risk. */
     return n;
 }
 

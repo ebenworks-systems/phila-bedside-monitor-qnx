@@ -41,6 +41,7 @@ typedef struct {
     news2_result_t res;
     /* REC_ALARM */
     news2_risk_t level;
+    bool technical;            /* a sensor alarm: "level" reads "technical" */
     char reason[REC_TEXT_MAX]; /* "red:spo2", "aggregate>=7", "sensor-lost:bp" ... */
     uint32_t latency_us;       /* reading taken -> alarm raised */
     /* REC_EVENT */

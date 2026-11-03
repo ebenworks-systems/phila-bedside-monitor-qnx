@@ -6,6 +6,11 @@
 #
 # Cases: designed-idle designed-tick-idle designed-hog35 designed-hog10 naive-hog10 naive-hog35
 # Each hog uses two threads (one per virtual CPU) and starts ten seconds in.
+#
+# A VM measures its own timing only as well as the host lets it run. Set
+# QUIET_LOAD (for example 2.5) to wait before each case until the host's
+# one-minute load average is below it, for at most QUIET_WAIT seconds
+# (default 1800); the load is written beside each case's results either way.
 # SPDX-License-Identifier: MIT
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
@@ -37,7 +42,18 @@ mode_for() {
     esac
 }
 
+wait_quiet() {
+    [ -n "${QUIET_LOAD:-}" ] || return 0
+    local waited=0
+    while awk -v max="$QUIET_LOAD" '{exit !($1 >= max)}' /proc/loadavg; do
+        [ "$waited" -ge "${QUIET_WAIT:-1800}" ] && { echo "  host still busy after ${waited} s; running anyway"; return 0; }
+        sleep 30; waited=$((waited + 30))
+    done
+}
+
 for c in "${cases[@]}"; do
+    wait_quiet
+    load_before="$(cut -d' ' -f1-3 /proc/loadavg)"
     hog="$(hog_for "$c")"
     echo "$(date '+%H:%M:%S') case $c: mode $(mode_for "$c"), ${secs} s, hog: ${hog:-none}; host load $(cut -d' ' -f1-3 /proc/loadavg)"
     "$q" ssh "$vm" "nohup sh /data/phila/run-case.sh $c $(mode_for "$c") $secs $hog > /dev/null 2>&1 &"
@@ -51,6 +67,6 @@ for c in "${cases[@]}"; do
              pidin-under-load.txt latency-mid.txt done; do
         "$q" get "$vm" "/data/phila/runs/$c/$f" "$out/$c/$f" 2>/dev/null || true
     done
-    echo "host load after: $(cut -d' ' -f1-3 /proc/loadavg)" > "$out/$c/host.txt"
+    printf 'host load before: %s\nhost load after: %s\n' "$load_before" "$(cut -d' ' -f1-3 /proc/loadavg)" > "$out/$c/host.txt"
     sed -n '2,6p' "$out/$c/monitor.log" 2>/dev/null || echo "  (no monitor log)"
 done

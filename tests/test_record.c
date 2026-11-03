@@ -29,6 +29,7 @@ static void build(void)
         } else if (i % 3 == 1) {
             e.kind = REC_ALARM;
             e.level = NEWS2_RISK_MEDIUM;
+            e.technical = i == 4;
             snprintf(e.reason, sizeof e.reason, "news2=6");
             e.latency_us = 120 + (uint32_t)i;
         } else {
@@ -74,6 +75,7 @@ int main(void)
                            "\"acvpu\":\"A\",\"temp_dc\":386,\"news2\":8,\"red\":0,\"risk\":\"high\"") != NULL);
     CHECK(strstr(lines[0], "\"prev\":\"0000000000000000000000000000000000000000000000000000000000000000\"") != NULL);
     CHECK(strstr(lines[1], "\"kind\":\"alarm\",\"level\":\"medium\",\"reason\":\"news2=6\",\"latency_us\":121") != NULL);
+    CHECK(strstr(lines[4], "\"kind\":\"alarm\",\"level\":\"technical\",") != NULL);
 
     /* A changed digit breaks that line's hash. */
     char saved[REC_LINE_MAX];
