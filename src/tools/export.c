@@ -133,8 +133,7 @@ int main(int argc, char **argv)
         return 1;
     }
     fprintf(out, "{\n  \"format\": \"phila-bedside-export/1\",\n");
-    fprintf(out, "  \"notice\": \"Prototype for a hackathon, not a medical device, not for clinical use. "
-                 "Fictional patients.\",\n");
+    fprintf(out, "  \"notice\": \"Prototype for a hackathon, not a medical device, not for clinical use.\",\n");
     fprintf(out, "  \"score\": \"NEWS2, Royal College of Physicians, 2017\",\n");
     fprintf(out, "  \"record\": {\"lines\": %lu, \"verified\": true, \"first_hash\": \"%s\", \"last_hash\": \"%s\"},\n",
                  lines, first_hash, chain.prev_hex);

@@ -1,5 +1,5 @@
 /*
- * scenario.c - fictional patients for the simulated sensors.
+ * scenario.c - the four patients of the simulated sensors.
  *
  * The ward scenario tells four short stories over about four minutes:
  *
@@ -13,7 +13,7 @@
  *           cuff is unplugged from 120 s to 170 s, which must raise a
  *           technical alarm rather than be scored.
  *
- * After 240 s every bed holds its last state. All patients are invented.
+ * After 240 s every bed holds its last state.
  * Prototype for a hackathon, not a medical device, not for clinical use.
  *
  * SPDX-License-Identifier: MIT

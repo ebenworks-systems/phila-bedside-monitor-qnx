@@ -1,9 +1,9 @@
 /*
- * scenario.h - fictional patients for the simulated sensors.
+ * scenario.h - the four patients of the simulated sensors.
  *
  * Every bed follows a scripted course in time, with a little deterministic
  * noise, so a run is repeatable: the same scenario and seed give the same
- * readings on a laptop and on QNX. All patients are invented.
+ * readings on a laptop and on QNX.
  *
  * Prototype for a hackathon, not a medical device, not for clinical use.
  *

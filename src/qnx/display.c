@@ -94,7 +94,7 @@ static void show(void)
 
     printf("%sPhila Health Ecosystem bedside monitor prototype%s   %s%s on %s, %s priorities, up %s s%s\n", BOLD, RESET,
            DIM, "running", osname, mode, up, RESET);
-    printf("%sPrototype for a hackathon, not a medical device, not for clinical use. Fictional patients.%s\n\n", DIM,
+    printf("%sPrototype for a hackathon, not a medical device, not for clinical use.%s\n\n", DIM,
            RESET);
     printf("%s%-8s %5s %5s %4s %5s %6s %5s %4s %6s  %-11s %s%s\n", BOLD, "Bed", "Pulse", "SpO2", "RR", "SBP", "Temp",
            "ACVPU", "O2", "NEWS2", "Alarm", "Why", RESET);

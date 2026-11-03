@@ -19,7 +19,7 @@ static void build(void)
         rec_entry_t e;
         memset(&e, 0, sizeof e);
         e.mono_ns = 1000000000LL * (i + 1);
-        e.wall_ms = 1793000000000LL + 1000 * i; /* a fixed, fictional time */
+        e.wall_ms = 1793000000000LL + 1000 * i; /* a fixed time */
         snprintf(e.bed, sizeof e.bed, "BED-0%d", 1 + i % 4);
         if (i % 3 == 0) {
             e.kind = REC_OBS;

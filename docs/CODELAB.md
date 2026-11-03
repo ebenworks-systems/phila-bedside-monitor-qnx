@@ -2,13 +2,13 @@
 
 In this codelab you build and run a vital-signs monitor on QNX 8.0 in QEMU, then load the processors until they have no spare time and watch the alarm path keep its deadline. On the way you use the parts of QNX that make that possible: message passing that hands the sender's priority to the receiver, pulses, high-resolution timers, a resource manager, sporadic scheduling and priority-inheritance mutexes.
 
-The monitor is a prototype for a hackathon. It is not a medical device and is not for clinical use, and every patient in it is invented.
+The monitor is a prototype for a hackathon. It is not a medical device and is not for clinical use.
 
 **What you need:** a Linux PC on x86_64 (these steps were run on Ubuntu 24.04) with QEMU, `make`, `gcc`, `socat`, `ssh` and Python 3; a free myQNX account; about 5 GB of disk; and about 90 minutes, most of it waiting for the SDP download.
 
 **What you will have at the end:** QNX 8.0 running in a virtual machine, the monitor scoring four patients there, an alarm latency measurement of your own, and a hash-chained record you can check from the host.
 
-## 1. Get QNX SDP 8.0
+## 1. Get the QNX Software Development Platform (SDP) 8.0
 
 QNX gives a free non-commercial licence, QNX Everywhere, which covers learning, research and prototypes. Sign in at [myQNX](https://www.qnx.com/), request the QNX Everywhere licence, and accept and deploy it in the myQNX License Manager. Then install QNX Software Center for Linux from your myQNX downloads.
 
@@ -161,7 +161,7 @@ pidin -p phila-monitord -F "%a %b %N %p %J"
 
 Thread 5 is intake, still at the 50 it inherited from the last reading. Thread 4 is the recorder; the `s` means sporadic scheduling, which step 7 covers.
 
-Intake scores NEWS2 for each bed, and when an alarm starts it does not raise it itself. It queues the event and sends a pulse at priority 60 to the alarm thread, which puts the alarm on the board the nurse's display reads and timestamps it:
+Intake scores the National Early Warning Score 2 (NEWS2), a bedside score of how ill a patient is, for each bed, and when an alarm starts it does not raise it itself. It queues the event and sends a pulse at priority 60 to the alarm thread, which puts the alarm on the board the nurse's display reads and timestamps it:
 
 ```c
 MsgSendPulse(M.alarm_coid, M.alarm_prio, PULSE_ALARM, raised);
