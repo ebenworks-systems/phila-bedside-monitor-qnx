@@ -6,7 +6,7 @@ The monitor is a prototype for a hackathon. It is not a medical device and is no
 
 **What you need:** a Linux PC on x86_64 (these steps were run on Ubuntu 24.04) with QEMU, `make`, `gcc`, `socat`, `ssh` and Python 3; a free myQNX account; about 5 GB of disk; and about 90 minutes, most of it waiting for the SDP download.
 
-**What you will have at the end:** QNX 8.0 running in a virtual machine, the monitor scoring four patients there, an alarm latency measurement of your own, and a tamper-evident record you can check from the host.
+**What you will have at the end:** QNX 8.0 running in a virtual machine, the monitor scoring four patients there, an alarm latency measurement of your own, and a hash-chained record you can check from the host.
 
 ## 1. Get QNX SDP 8.0
 
@@ -184,7 +184,7 @@ Over about four minutes, bed 2 deteriorates into the high band, bed 3's oxygen s
 
 ## 7. Keep the record without risking the alarm
 
-Every observation, alarm and nurse action is written to an append-only record. Each line holds the SHA-256 hash of the line before it and its own hash, so editing, removing or reordering any line breaks the chain from that point. The recorder thread writes the file and calls `fsync()` after every batch that holds an alarm.
+A snapshot of each bed every five seconds, every alarm and every nurse action are written to an append-only record. Each line holds the SHA-256 hash of the line before it and its own hash, so editing, removing or reordering a line breaks the chain from that point, unless whoever changed it also rewrote every hash after it. To catch that too, the recorder writes the chain's head, the latest line's number and hash, to the system log once a second, and the monitor prints it when it stops. The recorder thread writes the file and calls `fsync()` after every batch that holds an alarm.
 
 Writing to a disk can take a long time, so the recorder must never hold up the alarm path, and must not take more CPU than it should when it has a backlog. Older QNX releases offered adaptive partitioning for that. QNX's documentation for the 8.0 IDE says "QNX OS 8.0 does not support adaptive partitioning", so this monitor uses POSIX sporadic scheduling, which QNX 8.0 does support:
 
@@ -217,7 +217,12 @@ scripts/qemu-vm.sh get ~/qnx-vm/phila /data/phila/runs/ward.jsonl ward.jsonl
 python3 tools/verify_record.py ward.jsonl
 ```
 
-Change one digit in `ward.jsonl` and run the checker again: it names the line you changed.
+Change one digit in `ward.jsonl` and run the checker again: it names the line you changed. Then check the file against a head from the log, which a rewritten or shortened copy fails:
+
+```sh
+slog2info | grep "record head" | tail -1     # inside QNX: record head seq=N hash=...
+python3 tools/verify_record.py --head N HASH ward.jsonl
+```
 
 ## 8. Load the CPUs and measure
 
@@ -227,7 +232,7 @@ Change one digit in `ward.jsonl` and run the checker again: it names the line yo
 scripts/latency-runs.sh ~/qnx-vm/phila 300
 ```
 
-The probe scenario makes bed 1's oxygen saturation alternate between normal and a red score on every 100 ms reading, so an alarm starts five times a second. For each alarm the monitor stores the reading's deadline, when the sensor thread ran, when intake decided and when the alarm was on the board, and writes them to `latency.csv` at the end. The cases are:
+The probe scenario makes the oxygen saturation of beds 1 and 2 alternate between normal and a red score on every 100 ms reading, in opposite phase, so every reading starts an alarm on one of the two beds, ten a second. The first reading after a stall is an alarm onset too, so a stall's full delay always shows in the figures. For each alarm the monitor stores the reading's deadline, when the sensor thread ran, when intake decided and when the alarm was on the board, and writes them to `latency.csv` at the end. The cases are:
 
 | Case | Monitor | Load |
 |:---|:---|:---|
@@ -240,7 +245,7 @@ The probe scenario makes bed 1's oxygen saturation alternate between normal and 
 
 Under the designed priorities, the hog at 35 sits below every thread on the alarm path, so the alarm path should run as if the hog were not there. Under `--naive`, the same hog sits above the whole monitor, which cannot run at all until the hog stops.
 
-A virtual machine measures its own timing only as well as the host lets it run. On a busy PC the guest's virtual CPUs wait for the host scheduler, and that wait lands in the timer wake figure. Measure with the host as quiet as you can make it, and compare the cases with each other rather than with figures from real hardware. `docs/LATENCY-REPORT.md` has our results, the host's load during each case, and what they do and do not show.
+A virtual machine measures its own timing only as well as the host lets it run. On a busy PC the guest's virtual CPUs wait for the host scheduler, and that wait lands in the timer wake figure. Measure with the host as quiet as you can make it, and compare the cases with each other rather than with figures from real hardware. `scripts/latency-runs.sh` records the host's load before and after each case, and `python3 tools/latency_report.py results/latency --chart latency.png` prints the tables and draws the chart.
 
 ## 9. Clean up
 

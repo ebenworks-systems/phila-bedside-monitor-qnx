@@ -35,7 +35,8 @@ typedef enum {
 
 typedef enum {
     SCN_WARD = 0, /* four beds with the stories in scenario.c; about 4 minutes, then holds */
-    SCN_PROBE     /* latency probe: bed 1's SpO2 alternates normal and red on every reading */
+    SCN_PROBE     /* latency probe: beds 1 and 2's SpO2 alternate normal and red on every
+                     reading, in opposite phase, so every reading starts an alarm */
 } scenario_id_t;
 
 /* One sensor's reading for one bed. A value of -1 means "no reading": the

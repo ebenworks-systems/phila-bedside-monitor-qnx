@@ -2,14 +2,16 @@
  * monitord.c - the bedside monitor.
  *
  *   intake      receives sensor messages (MsgReceive on the name_attach
- *               channel), scores each bed with NEWS2 and decides alarms;
- *               runs at the sending sensor's priority
+ *               channel) from processes of the monitor's own user, scores
+ *               each bed with NEWS2 and decides alarms; runs at the sending
+ *               sensor's priority
  *   alarm       woken by a pulse; puts each alarm on the board the nurse
  *               display reads, logs it to slog2 and timestamps it
  *   supervisor  a 250 ms timer pulse; finds silent sensors and measures each
  *               thread's CPU time
  *   recorder    writes the append-only, hash-chained record under a
- *               sporadic-scheduling budget
+ *               sporadic-scheduling budget, and logs the chain's head to
+ *               slog2 once a second
  *   main        the resource manager behind the files in /dev/phila/
  *
  * Alarm latency is measured for every alarm onset, escalation and technical
@@ -69,8 +71,8 @@ typedef struct {
     char clinical[BED_REASON_MAX];
     int64_t since_ns;
     uint32_t latency_us;
-    char tech[BED_REASON_MAX]; /* "" when none */
-    int64_t tech_since_ns;
+    char tech[SENSOR_COUNT][BED_REASON_MAX]; /* one per sensor, "" when none */
+    int64_t tech_since_ns[SENSOR_COUNT];
 } board_t;
 
 typedef struct {
@@ -112,6 +114,8 @@ static struct {
     unsigned rec_head, rec_tail, rec_high;
     uint32_t rec_dropped;
     uint64_t rec_written;
+    uint64_t head_seq;                    /* last line written, 0 = none */
+    char head_hex[SHA256_HEX_LEN + 1];
     int rec_stop;
     pthread_t rec_tid;
 
@@ -125,6 +129,7 @@ static struct {
     int recorder_sporadic;
 
     int alarm_chid, alarm_coid, alarm_prio;
+    uint32_t refused;                     /* messages refused by the intake */
     slog2_buffer_t slog;
     volatile sig_atomic_t stop_requested;
 } M;
@@ -214,26 +219,74 @@ typedef union {
     char pad[512];
 } intake_msg_t;
 
+/* Senders already checked, by server connection id. A connection is checked
+ * once, on its first reading, and forgotten when it disconnects. */
+#define SENDERS_MAX 16
+static struct {
+    int scoid;
+    int ok;
+} g_senders[SENDERS_MAX];
+
+/* Readings are accepted only from a process running as the monitor's own
+ * user, so another user's program on the box cannot put readings, or
+ * alarms, on the ward. */
+static int sender_ok(int scoid)
+{
+    int free_slot = -1;
+    for (int i = 0; i < SENDERS_MAX; i++) {
+        if (g_senders[i].scoid == scoid) return g_senders[i].ok;
+        if (g_senders[i].scoid == 0 && free_slot < 0) free_slot = i;
+    }
+    struct _client_info ci;
+    int ok = ConnectClientInfo(scoid, &ci, 0) != -1 && ci.cred.euid == geteuid();
+    if (free_slot >= 0) {
+        g_senders[free_slot].scoid = scoid;
+        g_senders[free_slot].ok = ok;
+    }
+    return ok;
+}
+
+static void sender_forget(int scoid)
+{
+    for (int i = 0; i < SENDERS_MAX; i++)
+        if (g_senders[i].scoid == scoid) g_senders[i].scoid = 0;
+}
+
 static void *intake_main(void *arg)
 {
     name_attach_t *att = arg;
     intake_msg_t msg;
+    struct _msg_info info;
     bed_event_t ev[16];
     rec_entry_t obs[SCN_BEDS];
 
     for (;;) {
-        int rcvid = MsgReceive(att->chid, &msg, sizeof msg, NULL);
+        int rcvid = MsgReceive(att->chid, &msg, sizeof msg, &info);
         if (rcvid == -1) continue;
         if (rcvid == 0) {
-            if (msg.pulse.code == _PULSE_CODE_DISCONNECT) ConnectDetach(msg.pulse.scoid);
+            if (msg.pulse.code == _PULSE_CODE_DISCONNECT) {
+                sender_forget(msg.pulse.scoid);
+                ConnectDetach(msg.pulse.scoid);
+            }
             continue;
         }
-        if (msg.type == _IO_CONNECT) { /* from name_open() */
+        if (info.msglen >= (ssize_t)sizeof msg.type && msg.type == _IO_CONNECT) { /* from name_open() */
             MsgReply(rcvid, EOK, NULL, 0);
             continue;
         }
-        if (msg.type != PHILA_MSG_READING || msg.reading.sensor >= SENSOR_COUNT) {
-            MsgError(rcvid, ENOSYS);
+        /* A reading must be exactly one phila_reading_msg_t, so nothing of an
+         * earlier message can be left in the buffer, from a sender running
+         * as the monitor's user. */
+        const ssize_t want = (ssize_t)sizeof(phila_reading_msg_t);
+        if (info.srcmsglen != want || info.msglen != want ||
+            msg.type != PHILA_MSG_READING || msg.reading.sensor >= SENSOR_COUNT) {
+            M.refused++;
+            MsgError(rcvid, EINVAL);
+            continue;
+        }
+        if (!sender_ok(info.scoid)) {
+            M.refused++;
+            MsgError(rcvid, EPERM);
             continue;
         }
         /* While it serves this message the thread runs at the sender's
@@ -280,28 +333,41 @@ static void *intake_main(void *arg)
 /* ------------------------------------------------------------------ */
 /* alarm                                                               */
 
+/* Microseconds from then to now, as a uint32_t: 0 if now is earlier (a
+ * reading whose deadline is a little in the future), and capped, never
+ * wrapped, if the gap is over an hour. */
+static uint32_t us_between(int64_t then, int64_t now)
+{
+    if (now <= then) return 0;
+    int64_t us = (now - then) / 1000;
+    return us > (int64_t)UINT32_MAX ? UINT32_MAX : (uint32_t)us;
+}
+
 /* Put one event on the board. Called with M.lock held. */
 static void board_apply(const bed_event_t *e, int64_t now)
 {
     board_t *bd = &M.board[e->bed];
+    int s = (int)e->sensor;
     switch (e->kind) {
     case BEV_ALARM_ON:
     case BEV_ALARM_UP:
         bd->level = e->level;
         snprintf(bd->clinical, sizeof bd->clinical, "%s", e->reason);
         if (e->kind == BEV_ALARM_ON) bd->since_ns = now;
-        bd->latency_us = (uint32_t)((now - e->t_sched_ns) / 1000);
+        bd->latency_us = us_between(e->t_sched_ns, now);
         break;
     case BEV_ALARM_CLEAR:
         bd->level = NEWS2_RISK_LOW;
         bd->clinical[0] = '\0';
         break;
     case BEV_TECH_ON:
-        snprintf(bd->tech, sizeof bd->tech, "%s", e->reason);
-        bd->tech_since_ns = now;
+        if (s >= 0 && s < SENSOR_COUNT) {
+            snprintf(bd->tech[s], sizeof bd->tech[s], "%s", e->reason);
+            bd->tech_since_ns[s] = now;
+        }
         break;
     case BEV_TECH_CLEAR:
-        bd->tech[0] = '\0';
+        if (s >= 0 && s < SENSOR_COUNT) bd->tech[s][0] = '\0';
         break;
     }
     hist_t *h = &M.hist[M.hist_n++ % HISTORY_MAX];
@@ -310,7 +376,7 @@ static void board_apply(const bed_event_t *e, int64_t now)
     h->kind = e->kind;
     h->level = e->level;
     snprintf(h->reason, sizeof h->reason, "%s", e->reason);
-    h->latency_us = (uint32_t)((now - e->t_sched_ns) / 1000);
+    h->latency_us = us_between(e->t_sched_ns, now);
 }
 
 static int slog_severity(const bed_event_t *e)
@@ -342,7 +408,7 @@ static void *alarm_main(void *arg)
 
             for (int i = 0; i < n; i++) {
                 const bed_event_t *e = &ev[i];
-                uint32_t lat_us = (uint32_t)((raised - e->t_sched_ns) / 1000);
+                uint32_t lat_us = us_between(e->t_sched_ns, raised);
                 bool measured = e->kind == BEV_ALARM_ON || e->kind == BEV_ALARM_UP || e->kind == BEV_TECH_ON;
                 if (measured && M.lat_n < LAT_MAX) {
                     lat_t *l = &M.lat[M.lat_n];
@@ -395,6 +461,7 @@ static void *recorder_main(void *arg)
     static rec_entry_t batch[64];
     char line[REC_LINE_MAX];
     int64_t last_sync = rt_now_ns();
+    uint64_t logged_seq = 0;
 
     for (;;) {
         int n = 0, stop = 0;
@@ -424,14 +491,28 @@ static void *recorder_main(void *arg)
             if (batch[i].kind == REC_ALARM) alarm = 1;
         }
         int64_t now = rt_now_ns();
+        int log_head = 0;
         if ((alarm || now - last_sync >= 1000000000LL) && n > 0) {
             fsync(fd); /* an alarm is on disk before the next batch */
+            log_head = now - last_sync >= 1000000000LL;
             last_sync = now;
+        }
+        /* The chain catches a changed line only if nobody rewrote every hash
+         * after it. The head (the last line's number and hash) goes to the
+         * system log once a second, after the fsync, so a rewritten or
+         * shortened file no longer matches a head logged before it. */
+        if (log_head && chain.next_seq - 1 != logged_seq) {
+            logged_seq = chain.next_seq - 1;
+            mlog(SLOG2_INFO, "record head seq=%llu hash=%s", (unsigned long long)logged_seq, chain.prev_hex);
         }
         if (stop) break;
     }
     fsync(fd);
     close(fd);
+    M.head_seq = chain.next_seq - 1;
+    memcpy(M.head_hex, chain.prev_hex, sizeof M.head_hex);
+    if (M.head_seq != logged_seq)
+        mlog(SLOG2_INFO, "record head seq=%llu hash=%s", (unsigned long long)M.head_seq, M.head_hex);
     return NULL;
 }
 
@@ -517,8 +598,10 @@ static void finish(void)
     printf("phila-monitord:   of which timer wake: median %.1f, max %.1f; alarm pipeline: median %.1f, max %.1f\n", w[1],
            w[4], p[1], p[4]);
     printf("phila-monitord: technical alarms %u, max %.1f us\n", nt, t[4]);
-    printf("phila-monitord: intake ran at priority %d at most; dropped alarm events %u, dropped record lines %u\n",
-           M.intake_max_prio, M.evq_dropped, M.rec_dropped);
+    printf("phila-monitord: intake ran at priority %d at most; dropped alarm events %u, dropped record lines %u, "
+           "refused messages %u\n", M.intake_max_prio, M.evq_dropped, M.rec_dropped, M.refused);
+    if (M.record_path != NULL && M.head_seq > 0)
+        printf("phila-monitord: record head seq=%llu hash=%s\n", (unsigned long long)M.head_seq, M.head_hex);
     mlog(SLOG2_INFO, "stopped: %u clinical alarms, max latency %.1f us", n, s[4]);
     fflush(stdout);
     _exit(0);
@@ -615,6 +698,18 @@ static void put_val(text_t *t, const char *key, const bed_t *bed, sensor_t s, in
         put(t, " %s=-", key);
 }
 
+/* The value of "tech=": "fault:pulse-ox,silent:temp" or "none", then the newline. */
+static void put_tech(text_t *t, const board_t *bd)
+{
+    int any = 0;
+    for (int s = 0; s < SENSOR_COUNT; s++) {
+        if (!bd->tech[s][0]) continue;
+        put(t, "%s%s", any ? "," : "", bd->tech[s]);
+        any = 1;
+    }
+    put(t, "%s\n", any ? "" : "none");
+}
+
 static char *render(pfile_t which, size_t *len)
 {
     text_t t = {NULL, 0, 0};
@@ -635,11 +730,11 @@ static char *render(pfile_t which, size_t *len)
             put_val(&t, "rr", bed, SENSOR_RESP, 0);
             put_val(&t, "sbp", bed, SENSOR_BP, 0);
             put_val(&t, "temp", bed, SENSOR_TEMP, 0);
-            put(&t, " acvpu=%s o2=%d scale=%d news2=%u risk=%s complete=%d alarm=%s acked=%d tech=%s\n",
+            put(&t, " acvpu=%s o2=%d scale=%d news2=%u risk=%s complete=%d alarm=%s acked=%d tech=",
                 news2_acvpu_letter(bed->acvpu), bed->on_oxygen ? 1 : 0, (int)bed->scale, (unsigned)bed->res.total,
                 news2_risk_name(bed->res.risk), bed->complete ? 1 : 0,
-                bd->level == NEWS2_RISK_LOW ? "none" : news2_risk_name(bd->level), bed->acked ? 1 : 0,
-                bd->tech[0] ? bd->tech : "none");
+                bd->level == NEWS2_RISK_LOW ? "none" : news2_risk_name(bd->level), bed->acked ? 1 : 0);
+            put_tech(&t, bd);
         }
         pthread_mutex_unlock(&M.lock);
     } else if (which == PFILE_ALARMS) {
@@ -651,9 +746,10 @@ static char *render(pfile_t which, size_t *len)
                 put(&t, "active bed=%s level=%s for_s=%.1f latency_us=%u acked=%d reason=%s\n", scn_bed_id(b),
                     news2_risk_name(bd->level), (double)(now - bd->since_ns) / 1e9, bd->latency_us,
                     M.ward.bed[b].acked ? 1 : 0, bd->clinical);
-            if (bd->tech[0])
-                put(&t, "active bed=%s level=technical for_s=%.1f reason=%s\n", scn_bed_id(b),
-                    (double)(now - bd->tech_since_ns) / 1e9, bd->tech);
+            for (int s = 0; s < SENSOR_COUNT; s++)
+                if (bd->tech[s][0])
+                    put(&t, "active bed=%s level=technical for_s=%.1f reason=%s\n", scn_bed_id(b),
+                        (double)(now - bd->tech_since_ns[s]) / 1e9, bd->tech[s]);
         }
         unsigned n = M.hist_n < HISTORY_MAX ? M.hist_n : HISTORY_MAX;
         for (unsigned i = 0; i < n; i++) {

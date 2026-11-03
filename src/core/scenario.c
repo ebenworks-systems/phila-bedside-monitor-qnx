@@ -140,11 +140,14 @@ static scn_value_t ward(const scenario_t *sc, int bed, sensor_t s, int64_t t)
 
 static scn_value_t probe(const scenario_t *sc, int bed, sensor_t s, int64_t t)
 {
-    if (bed == 0 && s == SENSOR_PULSE_OX) {
-        /* Alternate a normal and a red SpO2 on every reading: each red one is
-         * a fresh alarm onset whose latency the monitor measures. */
+    if (bed <= 1 && s == SENSOR_PULSE_OX) {
+        /* Beds 1 and 2 alternate a normal and a red SpO2 on every reading, in
+         * opposite phase, so every reading is a fresh alarm onset on one of
+         * them and the monitor measures the delay of every reading, the first
+         * one after a stall included. */
         int64_t step = t / scn_period_ms(sc, s);
-        scn_value_t r = {{(int16_t)((step % 2) ? 89 : 97), 76}};
+        int red = (int)((step + bed) % 2) == 1;
+        scn_value_t r = {{(int16_t)(red ? 89 : 97), 76}};
         return r;
     }
     scenario_t calm = {SCN_WARD, sc->seed};

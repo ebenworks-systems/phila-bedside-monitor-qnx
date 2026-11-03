@@ -109,7 +109,7 @@ static int rescore(ward_t *w, int b, int64_t t_sched, int64_t t_sample, int64_t 
         bed->alarm_level = level;
         bed->acked = false;
         n = push(ev, cap, n, &e);
-    } else if (level == NEWS2_RISK_LOW && bed->alarm_level != NEWS2_RISK_LOW) {
+    } else if (level == NEWS2_RISK_LOW && bed->alarm_level != NEWS2_RISK_LOW && bed->complete) {
         e.kind = BEV_ALARM_CLEAR;
         reason_for(bed, e.reason, sizeof e.reason);
         bed->alarm_level = NEWS2_RISK_LOW;
@@ -119,7 +119,11 @@ static int rescore(ward_t *w, int b, int64_t t_sched, int64_t t_sample, int64_t 
     /* A fall to a lower band that is still above low changes nothing: the
      * alarm holds the highest band it reached until the bed is back to low,
      * so a score wobbling across a band edge cannot raise the same alarm
-     * again and again. The current band is always in bed->res.risk. */
+     * again and again. A missing parameter scores 0, so it can only lower
+     * the score: an alarm clears only on a complete set of readings, never
+     * because the sensor that caused it went quiet. A rise while incomplete
+     * is real, since it rests on the readings present. The current band is
+     * always in bed->res.risk. */
     return n;
 }
 

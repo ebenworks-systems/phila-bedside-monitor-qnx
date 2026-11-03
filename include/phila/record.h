@@ -1,10 +1,14 @@
 /*
  * record.h - the append-only record.
  *
- * Every observation, alarm and event becomes one JSON line. Each line carries
- * the SHA-256 of the line before it ("prev") and its own hash ("hash"), so the
- * file forms a chain: changing, removing or reordering any line breaks every
- * hash after it, and rec_verify_line() finds the first broken one.
+ * Every entry (a bed snapshot, an alarm or an event) becomes one JSON line.
+ * Each line carries the SHA-256 of the line before it ("prev") and its own
+ * hash ("hash"), so the file forms a chain: changing, removing or reordering
+ * a line breaks every hash after it, and rec_verify_line() finds the first
+ * broken one. Someone who rewrites every later hash as well leaves a valid
+ * chain, so the monitor also logs the chain's head (the last line's seq and
+ * hash) outside the file; a file that no longer has that hash at that seq
+ * was rewritten or cut short.
  *
  * Keys always appear in the same order and values are integers or plain
  * strings, so the hash is reproducible on any machine without a JSON library.

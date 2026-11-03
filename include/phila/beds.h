@@ -11,8 +11,10 @@
  *     low-medium (a single red score), medium (5 or 6) or high (7 or more),
  *     and is raised again whenever the band goes above the highest band
  *     this alarm has reached;
- *   - it holds that band until the bed falls back to low, then clears, so a
- *     score wobbling across a band edge does not repeat the alarm;
+ *   - it holds that band until the bed falls back to low with every
+ *     parameter read, then clears, so a score wobbling across a band edge
+ *     does not repeat the alarm and a sensor that stops reading cannot
+ *     clear it;
  *   - a technical alarm starts when a sensor reports "no reading" or has
  *     been silent for three of its sampling periods, and clears with the
  *     next good reading.

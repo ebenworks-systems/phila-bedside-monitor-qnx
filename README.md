@@ -1,6 +1,6 @@
 # Phila Health Ecosystem bedside monitor prototype for QNX 8.0
 
-This is a bedside vital-signs monitor written for the QNX 8.0 real-time operating system and run in QEMU. Simulated sensors measure four fictional patients' pulse, oxygen saturation, breathing rate, blood pressure and temperature at fixed rates. The monitor scores every patient with the National Early Warning Score 2 (NEWS2) after each reading and puts an alarm on the nurse's board within a time it measures, including while other programs hold every processor. Every observation, alarm and nurse action goes into an append-only record whose lines are chained by SHA-256 hashes, so any later edit shows, and the record exports as one plain JSON document.
+This is a bedside vital-signs monitor written for the QNX 8.0 real-time operating system and run in QEMU. Simulated sensors measure four fictional patients' pulse, oxygen saturation, breathing rate, blood pressure and temperature at fixed rates. The monitor scores every patient with the National Early Warning Score 2 (NEWS2) after each reading and puts an alarm on the nurse's board within a time it measures, including while other programs hold every processor. A snapshot of each bed every five seconds, every alarm and every nurse action go into an append-only record. Its lines are chained by SHA-256 hashes, and once a second the monitor writes the chain's latest hash to the system log, so a check against that logged hash catches a line edited, removed or reordered before it, even when every later hash was rewritten to match. The record exports as one plain JSON document.
 
 **This is a prototype for a hackathon. It is not a medical device and is not for clinical use.** The patients and readings are invented. Ebenworks built it for the QNX Global Hackathon 2026 as new work, separate from the products of Phila Health Ecosystem, which keeps clinics and health teams working without a signal. It shares no code with them.
 
@@ -31,7 +31,7 @@ The alarm path never waits on the disk. The recorder takes entries from a queue 
 
 The plan for this entry named QNX adaptive partitioning to cap the recorder's share of the CPU. QNX's own documentation for the 8.0 IDE says "QNX OS 8.0 does not support adaptive partitioning" ([APS View](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.ide.userguide/topic/APS_view.html)), so the recorder runs under sporadic scheduling instead, and the supervisor measures every thread's CPU time with the per-thread CPU clocks (`pthread_getcpuclockid()`), which `/dev/phila/threads` shows.
 
-Running the monitor with `--naive` puts every thread at priority 10 round-robin and uses default tick-aligned timers. That is the comparison case in the latency report: the same code with no priority design.
+Running the monitor with `--naive` puts every thread at priority 10 round-robin and uses default tick-aligned timers. That is the comparison case in the latency runs: the same code with no priority design.
 
 The QNX features in use are message passing with priority inheritance (`name_attach()`, `name_open()`, `MsgSend()`, `MsgReceive()`, `MsgReply()`), pulses (`MsgSendPulse()`, `MsgReceivePulse()`), periodic and high-resolution timers (`timer_create()` with `SIGEV_PULSE_INIT`, `timer_settime()` with `TIMER_TOLERANCE`), a resource manager (`resmgr_attach()`, the `iofunc` layer and a per-open snapshot), `SCHED_SPORADIC`, mutexes with `PTHREAD_PRIO_INHERIT`, per-thread CPU-time clocks, named threads and `slog2` logging.
 
@@ -85,12 +85,15 @@ cat /dev/phila/latency /dev/phila/threads
 slog2info | grep phila
 ```
 
-Stop the monitor with `kill` (it finishes the record and prints its latency summary), then check and export the record:
+Stop the monitor with `kill` (it finishes the record and prints its latency summary and the record's head), then check and export the record:
 
 ```sh
 bin/phila-export runs/ward.jsonl runs/ward-export.json     # on QNX
 python3 tools/verify_record.py ward.jsonl                   # on the host, after scripts/qemu-vm.sh get
+python3 tools/verify_record.py --head SEQ HASH ward.jsonl   # SEQ and HASH from "record head" in slog2info
 ```
+
+The chain alone shows a changed line unless every hash after it was rewritten too. The head check closes that gap for every line written before the head was logged: a rewritten or shortened file no longer has that hash at that line.
 
 The QEMU image that `mkqnximage` makes does not include OpenSSH's `sshd-auth` helper, so sshd refuses every login. `scripts/make-image.sh` adds it through the two files in `qemu/snippets/`. `scripts/qemu-vm.sh` boots the image with QEMU's user-mode network, so it needs no bridge or root, and forwards SSH to 127.0.0.1 only.
 
@@ -106,7 +109,7 @@ The QEMU image that `mkqnximage` makes does not include OpenSSH's `sshd-auth` he
 
 ## Measuring the alarm path
 
-`scripts/latency-runs.sh` runs the probe scenario, in which bed 1's oxygen saturation alternates between normal and a red score on every 100 ms reading, so a new alarm starts five times a second. For every alarm the monitor stores three spans: from the reading's deadline to the sensor thread running (the timer wake), from there to the alarm on the board (the alarm pipeline), and the total. The cases are no load, two spinning threads at priority 35 (above the system's own services and below the alarm path), two at priority 10, and the same loads against the `--naive` build. `docs/LATENCY-REPORT.md` has the results and how they were taken.
+`scripts/latency-runs.sh` runs the probe scenario, in which the oxygen saturation of beds 1 and 2 alternates between normal and a red score on every 100 ms reading, in opposite phase, so every reading starts a new alarm on one of the two beds, ten a second, and the first reading after any stall is measured too. For every alarm the monitor stores three spans: from the reading's deadline to the sensor thread running (the timer wake), from there to the alarm on the board (the alarm pipeline), and the total. The cases are no load, two spinning threads at priority 35 (above the system's own services and below the alarm path), two at priority 10, and the same loads against the `--naive` build. `tools/latency_report.py` turns the fetched runs into tables and a chart.
 
 ## Repository layout
 
@@ -119,7 +122,7 @@ The QEMU image that `mkqnximage` makes does not include OpenSSH's `sshd-auth` he
 | `tools/verify_record.py` | An independent check of the record's hash chain |
 | `scripts/` | Image build, VM control and the latency runs |
 | `qemu/snippets/` | The `mkqnximage` additions |
-| `docs/` | The codelab and the latency report |
+| `docs/` | The codelab |
 
 ## Licence
 

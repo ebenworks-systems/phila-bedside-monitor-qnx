@@ -91,13 +91,21 @@ int main(void)
     CHECK(same);
     CHECK(differ);
 
-    /* Probe: bed 1's SpO2 alternates every 100 ms, so one alarm starts per 200 ms. */
+    /* Probe: beds 1 and 2's SpO2 alternate every 100 ms in opposite phase,
+     * so every reading starts an alarm on one of them. */
     scenario_t probe = {SCN_PROBE, 1};
     CHECK_EQ_INT(scn_period_ms(&probe, SENSOR_PULSE_OX), 100);
     run(&probe, 10000, t);
     CHECK_EQ_INT(t[0].on, 50);
     CHECK_EQ_INT(t[0].clear, 50);
-    CHECK_EQ_INT(t[1].on + t[2].on + t[3].on, 0);
+    CHECK_EQ_INT(t[1].on, 51);
+    CHECK_EQ_INT(t[1].clear, 50);
+    CHECK_EQ_INT(t[2].on + t[3].on, 0);
+    for (int64_t step = 0; step < 200; step++) { /* exactly one of the two is red on each reading */
+        int red0 = scn_read(&probe, 0, SENSOR_PULSE_OX, step * 100).v[0] == 89;
+        int red1 = scn_read(&probe, 1, SENSOR_PULSE_OX, step * 100).v[0] == 89;
+        CHECK(red0 + red1 == 1);
+    }
 
     scenario_id_t id;
     CHECK(scn_parse("probe", &id) && id == SCN_PROBE);

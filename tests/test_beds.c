@@ -169,6 +169,41 @@ int main(void)
     CHECK_EQ_INT(ward_set_oxygen(&w, 3, false, 8 * MS, ev, 8), 0);
     CHECK_EQ_INT(w.bed[3].res.total, 0);
 
+    /* A sensor that stops reading cannot clear the alarm it caused. The
+     * missing SpO2 scores 0, so the score falls to low, but the alarm holds
+     * until a complete set of readings is back to low. */
+    ward_init(&w, &sc, 0);
+    all_normal(0, 0);
+    n = feed(0, SENSOR_PULSE_OX, 89, 70, 10 * MS); /* SpO2 89 on Scale 1: red */
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_ALARM_ON);
+    n = feed(0, SENSOR_PULSE_OX, -1, -1, 20 * MS); /* the probe comes off */
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_TECH_ON);
+    CHECK_EQ_INT(w.bed[0].res.risk, NEWS2_RISK_LOW);
+    CHECK_EQ_INT(w.bed[0].alarm_level, NEWS2_RISK_LOW_MEDIUM);
+    n = feed(0, SENSOR_RESP, 16, 0, 30 * MS); /* other sensors still read */
+    CHECK_EQ_INT(n, 0);
+    n = feed(0, SENSOR_PULSE_OX, 97, 70, 40 * MS); /* back, and normal */
+    CHECK_EQ_INT(n, 2);
+    CHECK_EQ_INT(ev[0].kind, BEV_TECH_CLEAR);
+    CHECK_EQ_INT(ev[1].kind, BEV_ALARM_CLEAR);
+    CHECK_EQ_INT(w.bed[0].alarm_level, NEWS2_RISK_LOW);
+    /* The same when the probe goes silent instead of reporting no reading. */
+    n = feed(0, SENSOR_PULSE_OX, 89, 70, 50 * MS);
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_ALARM_ON);
+    int64_t ox_period = (int64_t)scn_period_ms(&sc, SENSOR_PULSE_OX) * MS;
+    int64_t later = 50 * MS + 5000 + 3 * ox_period;
+    for (int b = 0; b < SCN_BEDS; b++)
+        for (int s = 0; s < SENSOR_COUNT; s++)
+            if (s != SENSOR_PULSE_OX || b != 0) w.bed[b].last_ns[s] = later; /* others fresh */
+    n = ward_check_silence(&w, later, ev, 8);
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_TECH_ON);
+    CHECK_EQ_STR(ev[0].reason, "silent:pulse-ox");
+    CHECK_EQ_INT(w.bed[0].alarm_level, NEWS2_RISK_LOW_MEDIUM);
+
     /* Events beyond the caller's array are counted, not written. */
     ward_init(&w, &sc, 0);
     n = ward_check_silence(&w, 60000 * MS, ev, 2);

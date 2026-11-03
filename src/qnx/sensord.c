@@ -43,6 +43,7 @@ typedef struct {
     sensor_t sensor;
     uint32_t sent, missed, failed;
     int hires;
+    int64_t readings; /* readings taken, whether or not the send worked */
 } sensor_ctx_t;
 
 static void *sensor_main(void *arg)
@@ -104,12 +105,14 @@ static void *sensor_main(void *arg)
 
         /* Which deadline is this pulse for? The next one due is last_k + 1.
          * A high-resolution timer can fire a few microseconds before its
-         * deadline, so a pulse within half a period of it counts as on
-         * time. If the thread was held up past further deadlines, k is the
-         * latest one passed, and the delay still counts from the oldest
-         * deadline not yet served. */
+         * deadline, so a pulse up to 1 ms early counts as on time; anything
+         * earlier is a pulse that queued up while the thread was held up,
+         * for a deadline already served. If the thread was held up past
+         * further deadlines, k is the latest one passed, and the delay still
+         * counts from the oldest deadline not yet served. */
+        const int64_t early = period / 2 < 1000000LL ? period / 2 : 1000000LL;
         int64_t oldest = last_k + 1;
-        if (now < g_start_ns + oldest * period - period / 2) continue; /* not due: a stray pulse */
+        if (now < g_start_ns + oldest * period - early) continue;
         int64_t k = (now - g_start_ns) / period;
         if (k < oldest) k = oldest;
         msg.missed = (uint32_t)(k - oldest);
@@ -118,7 +121,12 @@ static void *sensor_main(void *arg)
 
         msg.t_sched_ns = g_start_ns + oldest * period;
         msg.t_sample_ns = now;
-        int64_t t_ms = k * (period / 1000000LL);
+        /* The ward follows the clock. The probe alternates on every reading
+         * actually taken, so a reading after any number of missed deadlines
+         * is still a fresh alarm onset and its delay is measured. */
+        int64_t step = g_sc.id == SCN_PROBE ? ctx->readings : k;
+        ctx->readings++;
+        int64_t t_ms = step * (period / 1000000LL);
         for (int b = 0; b < SCN_BEDS; b++) {
             scn_value_t v = scn_read(&g_sc, b, ctx->sensor, t_ms);
             msg.v[b][0] = v.v[0];
