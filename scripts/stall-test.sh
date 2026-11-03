@@ -51,15 +51,17 @@ if [ "$k" -eq 0 ]; then
 fi
 [ -x "$build/phila-sensord" ] && [ -x "$build/phila-monitord" ] || { echo "no QNX build in $build; run make qnx" >&2; exit 1; }
 
-"$q" ssh "$vm" 'mkdir -p /data/phila/bin /data/phila/runs'
-for f in "$build"/phila-*; do "$q" put "$vm" "$f" "/data/phila/bin/$(basename "$f")"; done
-"$q" put "$vm" "$here/scripts/run-case.sh" /data/phila/run-case.sh
-
-# A case still running in the guest (an interrupted run) would share the monitor's name and folder.
-if "$q" ssh "$vm" 'pidin -p phila-monitord -f a; pidin -p phila-sensord -f a' 2>/dev/null | grep -q '[0-9]'; then
+# A case still running in the guest (an interrupted run) would share the monitor's name, folder and
+# programs, so nothing is copied while one runs.
+running="$("$q" ssh "$vm" '{ pidin -p phila-monitord -f a; pidin -p phila-sensord -f a; true; }' 2>/dev/null || true)"
+if grep -q '[0-9]' <<< "$running"; then
     echo "a phila-monitord or phila-sensord is still running in the guest; wait for it or slay it first" >&2
     exit 1
 fi
+
+"$q" ssh "$vm" 'mkdir -p /data/phila/bin /data/phila/runs'
+for f in "$build"/phila-*; do "$q" put "$vm" "$f" "/data/phila/bin/$(basename "$f")"; done
+"$q" put "$vm" "$here/scripts/run-case.sh" /data/phila/run-case.sh
 
 load_before="$(cut -d' ' -f1-3 /proc/loadavg)"
 read -r run0 wait0 n0 k0 pid0 <<< "$(vcpu_stat)"

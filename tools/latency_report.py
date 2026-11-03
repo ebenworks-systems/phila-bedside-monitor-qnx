@@ -174,19 +174,21 @@ def main(argv):
         if not data[c][1]["stalls"]:
             continue
         clin = sorted((r for r in data[c][0] if r[0] in CLINICAL), key=lambda r: r[4])
-        print(f"\n**Timer wake every ten seconds, {LABELS[c]}** (each run of 100 clinical alarms; "
-              f"From and To count from the first alarm's deadline, about 1.5 s after the start the stall "
-              f"times count from)\n")
+        print(f"\n**Timer wake every ten seconds, {LABELS[c]}** (the clinical alarms whose reading was due in "
+              f"each ten seconds, counted from the first alarm's deadline, which comes about 1.5 s after the start "
+              f"the stall times count from)\n")
         for st in data[c][1]["stalls"]:
             print(f"- Host stall: {st}")
-        print("\n| Window | From | To | Median wake | Max wake | Readings taken before their deadline |")
-        print("|---:|---:|---:|---:|---:|---:|")
+        print("\n| Seconds | Alarms | Median wake | Max wake | Readings taken before their deadline |")
+        print("|:---|---:|---:|---:|---:|")
         t0 = clin[0][4] if clin else 0
-        for i in range(0, len(clin) - 99, 100):
-            w = clin[i:i + 100]
-            wake = [r[2] for r in w]
-            print(f"| {i // 100 + 1} | {(w[0][4] - t0) / 1e9:.1f} s | {(w[-1][4] - t0) / 1e9:.1f} s | "
-                  f"{fmt(statistics.median(wake))} | {fmt(max(wake))} | {sum(1 for x in wake if x < 0)} |")
+        windows = {}
+        for r in clin:
+            windows.setdefault(int((r[4] - t0) // 10_000_000_000), []).append(r[2])
+        for i in sorted(windows):
+            wake = windows[i]
+            print(f"| {i * 10} to {i * 10 + 10} | {len(wake)} | {fmt(statistics.median(wake))} | {fmt(max(wake))} | "
+                  f"{sum(1 for x in wake if x < 0)} |")
 
     print("\n**The host's hold on the virtual machine** (run-queue wait of the VM's virtual CPU threads during each case)\n")
     print("| Case | Host kept the virtual CPUs waiting | Times put on a processor | Mean wait each time |")
