@@ -3,7 +3,7 @@ phila-sensord: the monitor has gone (Bad file descriptor)
 phila-sensord: the monitor has gone (Bad file descriptor)
 phila-sensord: the monitor has gone (Bad file descriptor)
 phila-sensord: the monitor has gone (Bad file descriptor)
-phila-sensord: pulse-ox sent 2987, missed deadlines 0, failed sends 1, tick-aligned timer
+phila-sensord: pulse-ox sent 2986, missed deadlines 0, failed sends 1, tick-aligned timer
 phila-sensord: resp     sent 299, missed deadlines 0, failed sends 1, tick-aligned timer
 phila-sensord: bp       sent 299, missed deadlines 0, failed sends 1, tick-aligned timer
 phila-sensord: temp     sent 299, missed deadlines 0, failed sends 1, tick-aligned timer

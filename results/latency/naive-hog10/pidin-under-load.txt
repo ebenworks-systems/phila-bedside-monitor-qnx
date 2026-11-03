@@ -9,14 +9,14 @@
        1   8 procnto-smp-instr   10r ???           
        1   9 procnto-smp-instr   10r RECEIVE       
        1  10 procnto-smp-instr   10r RECEIVE       
-       1  11 procnto-smp-instr   10r RECEIVE       
-       1  12 procnto-smp-instr   45r RECEIVE       
+       1  11 procnto-smp-instr   21r RECEIVE       
+       1  12 procnto-smp-instr   45r RUNNING       
        1  13 procnto-smp-instr   10r RECEIVE       
        1  14 procnto-smp-instr   10r RECEIVE       
        1  15 procnto-smp-instr   10r RECEIVE       
-       1  16 procnto-smp-instr   45r RUNNING       
+       1  16 procnto-smp-instr   10r RECEIVE       
        1  17 procnto-smp-instr   10r RECEIVE       
-       1  18 procnto-smp-instr   10r RECEIVE       
+       1  18 procnto-smp-instr   45r RECEIVE       
        1  19 procnto-smp-instr   10r RECEIVE       
        1  20 procnto-smp-instr   10r RECEIVE       
        1  21 procnto-smp-instr   10r RECEIVE       
@@ -24,7 +24,6 @@
        1  23 procnto-smp-instr   10r RECEIVE       
        1  24 procnto-smp-instr   10r RECEIVE       
        1  25 procnto-smp-instr   10r RECEIVE       
-       1  26 procnto-smp-instr   21r RECEIVE       
    16387   1 slogger2            10r RECEIVE       
    28676   1 pci-server          10r RECEIVE       
    28676   2 pci-server          10r RECEIVE       
@@ -49,17 +48,17 @@
    65544   9 devb-eide           10r RECEIVE       
    65544  10 devb-eide           10r RECEIVE       
    65544  11 devb-eide           10r RECEIVE       
-   65544  12 devb-eide           10r RECEIVE       
+   65544  12 devb-eide           30r RECEIVE       
    65544  13 devb-eide           10r RECEIVE       
    65544  14 devb-eide           10r RECEIVE       
-   65544  15 devb-eide           10r RECEIVE       
-   65544  16 devb-eide           45r RECEIVE       
+   65544  15 devb-eide           45r RECEIVE       
+   65544  16 devb-eide           10r RECEIVE       
   131081   1 random              10r SIGWAITINFO   
   131081   2 random              10r NANOSLEEP     
   131081   3 random              10r RECEIVE       
   131081   4 random              10r RECEIVE       
   143370   1 pipe                10r SIGWAITINFO   
-  143370   2 pipe                10r RECEIVE       
+  143370   3 pipe                10r RECEIVE       
   143370   4 pipe                10r RECEIVE       
   143370   5 pipe                10r RECEIVE       
   143370   6 pipe                10r RECEIVE       
@@ -116,20 +115,21 @@
   282643   5 io-usb-otg          21r RECEIVE       
   282643   6 io-usb-otg          10r RECEIVE       
   282643   7 io-usb-otg          21r RECEIVE       
-  282643   8 io-usb-otg          21r RECEIVE       
- 8663061   1 sh                  10r SIGSUSPEND    
- 8724482   1 phila-monitord      45r RECEIVE       
- 8724482   2 phila-monitord      10r RECEIVE       
- 8724482   3 phila-monitord      10r RECEIVE       
- 8724482   4 phila-monitord      10r CONDVAR       
- 8724482   5 phila-monitord      10r RECEIVE       
- 8736786   1 phila-sensord       10r JOIN          
- 8736786   2 phila-sensord       10r RECEIVE       
- 8736786   3 phila-sensord       10r RECEIVE       
- 8736786   4 phila-sensord       10r RECEIVE       
- 8736786   5 phila-sensord       10r RECEIVE       
- 8736788   1 sh                  45r SIGSUSPEND    
- 8761366   1 phila-hog           11f JOIN          
- 8761366   2 phila-hog           10r RUNNING       
- 8761366   3 phila-hog           10r READY         
- 8777751   1 pidin               45r REPLY         
+  282643   9 io-usb-otg          21r RECEIVE       
+  282643  10 io-usb-otg          21r RECEIVE       
+ 7356437   1 sh                  10r SIGSUSPEND    
+ 7417858   1 phila-monitord      45r RECEIVE       
+ 7417858   2 phila-monitord      10r RECEIVE       
+ 7417858   3 phila-monitord      10r READY         
+ 7417858   4 phila-monitord      10r CONDVAR       
+ 7417858   5 phila-monitord      10r RECEIVE       
+ 7430162   1 phila-sensord       10r JOIN          
+ 7430162   2 phila-sensord       10r RECEIVE       
+ 7430162   3 phila-sensord       10r RECEIVE       
+ 7430162   4 phila-sensord       10r RECEIVE       
+ 7430162   5 phila-sensord       10r RECEIVE       
+ 7430164   1 sh                  45r SIGSUSPEND    
+ 7454743   1 phila-hog           11f JOIN          
+ 7454743   2 phila-hog           10r RUNNING       
+ 7454743   3 phila-hog           10r READY         
+ 7471126   1 pidin               45r REPLY         

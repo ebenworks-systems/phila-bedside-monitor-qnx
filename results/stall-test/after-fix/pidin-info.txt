@@ -1,0 +1,4 @@
+CPU:X86_64 Release:8.0.0  FreeMem:864MB/1023MB BootTime:Nov 03 21:20:47 UTC 2026
+Processes: 19, Threads: 119
+Processor1: 590510 Intel 686 F6M151S2 2112MHz FPU 
+Processor2: 590510 Intel 686 F6M151S2 2112MHz FPU 

@@ -8,15 +8,15 @@
        1   7 procnto-smp-instr   30f NANOSLEEP     
        1   8 procnto-smp-instr   10r ???           
        1   9 procnto-smp-instr   10r RECEIVE       
-       1  10 procnto-smp-instr   45r RUNNING       
-       1  11 procnto-smp-instr   10r RECEIVE       
-       1  12 procnto-smp-instr   45r RECEIVE       
+       1  10 procnto-smp-instr   10r RECEIVE       
+       1  11 procnto-smp-instr   21r RECEIVE       
+       1  12 procnto-smp-instr   10r RECEIVE       
        1  13 procnto-smp-instr   10r RECEIVE       
        1  14 procnto-smp-instr   10r RECEIVE       
-       1  15 procnto-smp-instr   10r RECEIVE       
-       1  16 procnto-smp-instr   45r RECEIVE       
+       1  15 procnto-smp-instr   45r RECEIVE       
+       1  16 procnto-smp-instr   10r RECEIVE       
        1  17 procnto-smp-instr   10r RECEIVE       
-       1  18 procnto-smp-instr   10r RECEIVE       
+       1  18 procnto-smp-instr   45r RUNNING       
        1  19 procnto-smp-instr   10r RECEIVE       
        1  20 procnto-smp-instr   10r RECEIVE       
        1  21 procnto-smp-instr   10r RECEIVE       
@@ -24,7 +24,6 @@
        1  23 procnto-smp-instr   10r RECEIVE       
        1  24 procnto-smp-instr   10r RECEIVE       
        1  25 procnto-smp-instr   10r RECEIVE       
-       1  26 procnto-smp-instr   21r RECEIVE       
    16387   1 slogger2            10r RECEIVE       
    28676   1 pci-server          10r RECEIVE       
    28676   2 pci-server          10r RECEIVE       
@@ -47,21 +46,21 @@
    65544   7 devb-eide           10r RECEIVE       
    65544   8 devb-eide           10r RECEIVE       
    65544   9 devb-eide           10r RECEIVE       
-   65544  10 devb-eide           45r RECEIVE       
-   65544  11 devb-eide           45r RECEIVE       
-   65544  12 devb-eide           10r RECEIVE       
+   65544  10 devb-eide           10r RECEIVE       
+   65544  11 devb-eide           10r RECEIVE       
+   65544  12 devb-eide           30r RECEIVE       
    65544  13 devb-eide           10r RECEIVE       
-   65544  14 devb-eide           10r RECEIVE       
-   65544  15 devb-eide           10r RECEIVE       
-   65544  16 devb-eide           30r READY         
+   65544  14 devb-eide           45r RECEIVE       
+   65544  15 devb-eide           30r SEM           
+   65544  16 devb-eide           10r RECEIVE       
   131081   1 random              10r SIGWAITINFO   
   131081   2 random              10r NANOSLEEP     
   131081   3 random              10r RECEIVE       
   131081   4 random              10r RECEIVE       
   143370   1 pipe                10r SIGWAITINFO   
+  143370   2 pipe                10r RECEIVE       
   143370   3 pipe                10r RECEIVE       
   143370   4 pipe                10r RECEIVE       
-  143370   5 pipe                10r RECEIVE       
   143370   6 pipe                10r RECEIVE       
   155659   1 devc-pty            10r RECEIVE       
   159756   1 dumper              10r RECEIVE       
@@ -116,20 +115,21 @@
   282643   5 io-usb-otg          21r RECEIVE       
   282643   6 io-usb-otg          10r RECEIVE       
   282643   7 io-usb-otg          21r RECEIVE       
-  282643   8 io-usb-otg          21r RECEIVE       
- 6447125   1 sh                  10r SIGSUSPEND    
- 6508546   1 phila-monitord      45r RECEIVE       
- 6508546   2 phila-monitord      60f RECEIVE       
- 6508546   3 phila-monitord      55f RECEIVE       
- 6508546   4 phila-monitord      30s REPLY         
- 6508546   5 phila-monitord      50r RECEIVE       
- 6520850   1 phila-sensord       10r JOIN          
- 6520850   2 phila-sensord       50f RECEIVE       
- 6520850   3 phila-sensord       50f RECEIVE       
- 6520850   4 phila-sensord       50f RECEIVE       
- 6520850   5 phila-sensord       50f RECEIVE       
- 6520852   1 sh                  45r SIGSUSPEND    
- 6545431   1 phila-hog           11f JOIN          
- 6545431   2 phila-hog           10r READY         
- 6545431   3 phila-hog           10r RUNNING       
- 6561814   1 pidin               45r REPLY         
+  282643   9 io-usb-otg          21r RECEIVE       
+  282643  10 io-usb-otg          21r RECEIVE       
+ 6369301   1 sh                  10r SIGSUSPEND    
+ 6430722   1 phila-monitord      45r RECEIVE       
+ 6430722   2 phila-monitord      60f RECEIVE       
+ 6430722   3 phila-monitord      55f RECEIVE       
+ 6430722   4 phila-monitord      30s REPLY         
+ 6430722   5 phila-monitord      50r RECEIVE       
+ 6443026   1 phila-sensord       10r JOIN          
+ 6443026   2 phila-sensord       50f RECEIVE       
+ 6443026   3 phila-sensord       50f RECEIVE       
+ 6443026   4 phila-sensord       50f RECEIVE       
+ 6443026   5 phila-sensord       50f RECEIVE       
+ 6443028   1 sh                  45r SIGSUSPEND    
+ 6467606   1 phila-hog           11f JOIN          
+ 6467606   2 phila-hog           10r RUNNING       
+ 6467606   3 phila-hog           10r READY         
+ 6483991   1 pidin               45r REPLY         

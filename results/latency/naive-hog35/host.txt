@@ -1,8 +1,8 @@
-host load before: 185.92 114.89 121.34
-host load after: 216.72 180.89 148.27
-started: 2026-11-04 05:36:28 KST
-case seconds: 308.6
+host load before: 4.50 6.78 32.62
+host load after: 4.27 6.01 25.12
+started: 2026-11-04 07:39:21 KST
+case seconds: 309.2
 vcpu threads: 2
-vcpu run ms: 110255.8
-vcpu wait ms: 453348.7
-vcpu times run: 96571
+vcpu run ms: 560487.3
+vcpu wait ms: 413.7
+vcpu times run: 14560

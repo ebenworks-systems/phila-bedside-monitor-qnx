@@ -21,7 +21,8 @@ import re
 import statistics
 import sys
 
-ORDER = ["designed-idle", "designed-tick-idle", "designed-hog35", "designed-hog10", "naive-hog10", "naive-hog35"]
+ORDER = ["designed-idle", "designed-tick-idle", "designed-hog35", "designed-hog10", "naive-hog10", "naive-hog35",
+         "before-fix", "after-fix"]
 LABELS = {
     "designed-idle": "Designed, no load",
     "designed-tick-idle": "Designed, tick timers, no load",
@@ -134,16 +135,15 @@ def main(argv):
                   f"{fmt(pct(v, 0.999))} | {fmt(pct(v, 1))} |")
 
     print("\n**Each run**\n")
-    print("| Case | Technical alarms | Missed sensor deadlines | Hog | Started | Host load before | Host load after |")
-    print("|:---|---:|---:|:---|:---|:---|:---|")
+    print("| Case | Technical alarms | Missed sensor deadlines | Hog | Started |")
+    print("|:---|---:|---:|:---|:---|")
     for c in cases:
         rows, info = data[c]
         tech = sum(1 for r in rows if r[0] == "technical")
         hog = info["hog"].replace("phila-hog: ", "") or "none"
         missed = info["missed"] if info["missed"] is not None else "-"
         h = info["host"]
-        print(f"| {LABELS[c]} | {tech} | {missed} | {hog} | {h.get('started', '-')} | "
-              f"{h.get('host load before', '-')} | {h.get('host load after', '-')} |")
+        print(f"| {LABELS[c]} | {tech} | {missed} | {hog} | {h.get('started', '-')} |")
 
     print("\n**Timer phase** (the median timer wake of each run of 100 clinical alarms, about ten seconds; "
           "a lasting shift means the sensor timer kept a late phase)\n")
@@ -190,12 +190,16 @@ def main(argv):
             print(f"| {i * 10} to {i * 10 + 10} | {len(wake)} | {fmt(statistics.median(wake))} | {fmt(max(wake))} | "
                   f"{sum(1 for x in wake if x < 0)} |")
 
-    print("\n**The host's hold on the virtual machine** (run-queue wait of the VM's virtual CPU threads during each case)\n")
-    print("| Case | Host kept the virtual CPUs waiting | Times put on a processor | Mean wait each time |")
-    print("|:---|---:|---:|---:|")
+    print("\n**The host during each case** (its one-minute, five-minute and fifteen-minute load averages before and "
+          "after the case, and the run-queue wait of the VM's virtual CPU threads during it)\n")
+    print("| Case | Host load before | Host load after | Host kept the virtual CPUs waiting | Times put on a processor "
+          "| Mean wait each time |")
+    print("|:---|:---|:---|---:|---:|---:|")
     for c in cases:
-        total, times, mean = vcpu_wait(data[c][1]["host"])
-        print(f"| {LABELS[c]} | {total} | {times} | {mean} |")
+        h = data[c][1]["host"]
+        total, times, mean = vcpu_wait(h)
+        print(f"| {LABELS[c]} | {h.get('host load before', '-')} | {h.get('host load after', '-')} | {total} | {times} "
+              f"| {mean} |")
 
     ticks = {}
     for c in cases:
@@ -222,8 +226,9 @@ def main(argv):
             return LABELS[c] if total == "-" else f"{LABELS[c]}\nhost held the VM {total.split(' over ')[0]}"
         ax.set_yticks(range(1, len(cases) + 1), [label(c) for c in cases], fontsize=8)
         ax.set_xscale("log")
-        ax.set_xlabel("Deadline of the sensor reading to the alarm on the board (microseconds, log scale; whiskers are min "
-                      "and max;\nanything under 1 µs, including a reading taken before its deadline, is drawn at 1 µs)")
+        ax.set_xlabel("Deadline of the sensor reading to the alarm on the board (microseconds, log scale)\n"
+                      "Whiskers are min and max; anything under 1 µs, including a reading taken before its\n"
+                      "deadline, is drawn at 1 µs", fontsize=9)
         ax.invert_yaxis()
         ax.grid(axis="x", color="#e0e0e0")
         ax.set_title("Alarm latency on QNX 8.0 in QEMU, per case", loc="left")

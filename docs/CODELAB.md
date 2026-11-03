@@ -116,10 +116,20 @@ QNX 8.0 is tickless, but by default a timer still expires on the 1 ms system tic
 ```c
 struct itimerspec tol = {0};
 tol.it_value.tv_nsec = 1;
-timer_settime(timer, TIMER_TOLERANCE, &tol, NULL);   /* then arm it as usual */
+timer_settime(timer, TIMER_TOLERANCE, &tol, NULL);
 ```
 
-Every reading the sensor sends carries two times: the deadline it was due and the moment the thread actually ran. A high-resolution timer can fire a few microseconds before its deadline, so the sensor counts a pulse within half a period of the next deadline as on time, and if the thread was held up past several deadlines it counts the delay from the oldest one it missed. That way a late sensor can never hide its lateness.
+The sensor then arms the timer for one deadline at a time, at its absolute time on a fixed grid, and arms the next deadline after each reading:
+
+```c
+struct itimerspec its = {0};                    /* it_interval stays zero: one expiry */
+rt_ts(&its.it_value, dl_at(&dl, dl.armed));     /* start + k * period */
+timer_settime(timer, TIMER_ABSTIME, &its, NULL);
+```
+
+A periodic timer (`it_interval` set) would be one call, but in the latency runs of 4 November a host stall of a few hundred milliseconds left it late by the same amount for the rest of the run. Armed one deadline at a time, a stall makes one reading late and the next expiry is back on its deadline; the stall test in the [latency report](LATENCY-REPORT.md) shows both. The grid logic is plain C in `src/core/deadline.c`, with its own unit test.
+
+Every reading the sensor sends carries two times: the deadline it was due and the moment the thread actually ran. If the thread was held up past several deadlines, one reading stands for the latest of them, its delay counts from the oldest, and the others are counted as missed. That way a late sensor can never hide its lateness.
 
 ## 5. Message passing that carries priority
 

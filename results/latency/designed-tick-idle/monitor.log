@@ -1,7 +1,7 @@
 phila-monitord: running; scenario probe, designed priorities; /dev/phila/{status,alarms,latency,threads,control}
-phila-monitord: 3884 readings, 0 missed sensor deadlines, 6221 record lines
-phila-monitord: clinical alarm latency over 2987 alarms (us): min 577.2, median 667.2, p99 1236.2, p99.9 4659.3, max 15170.1
-phila-monitord:   of which timer wake: median 642.5, max 15127.7; alarm pipeline: median 22.7, max 138.9
-phila-monitord: technical alarms 4, max 201150.7 us
+phila-monitord: 3883 readings, 0 missed sensor deadlines, 6221 record lines
+phila-monitord: clinical alarm latency over 2986 alarms (us): min 679.9, median 766.3, p99 2611.1, p99.9 17184.2, max 34041.4
+phila-monitord:   of which timer wake: median 734.7, max 34021.3; alarm pipeline: median 30.9, max 2370.6
+phila-monitord: technical alarms 4, max 201869.3 us
 phila-monitord: intake ran at priority 50 at most; dropped alarm events 0, dropped record lines 0, refused messages 0
-phila-monitord: record head seq=6221 hash=d0403b9170804eb8977f7dbb1265d754e51299c874e18c4156558f613341e5ef
+phila-monitord: record head seq=6221 hash=797cb6b19c6da27f18438af5e73286d3c8a458f388013b7e16b3ad8c5e7190a9
