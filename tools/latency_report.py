@@ -72,18 +72,17 @@ def load_case(path):
 
 def vcpu_wait(host):
     """The host's run-queue wait of the VM's virtual CPUs over the case: the total,
-    its share of the time they were ready to run (waiting or running), and the
-    mean wait each time one was put on a processor."""
+    how many times they were put on a processor, and the mean wait each time.
+    No share is given: their run time includes KVM's halt polling when the guest
+    idles and none when a hog keeps it busy, so no share compares the cases."""
     try:
-        wait, run = float(host["vcpu wait ms"]), float(host["vcpu run ms"])
+        wait = float(host["vcpu wait ms"])
         secs, k, times = float(host["case seconds"]), int(host["vcpu threads"]), int(host["vcpu times run"])
     except (KeyError, ValueError):
         return "-", "-", "-"
-    if k <= 0 or secs <= 0 or times <= 0 or wait < 0 or run <= 0:
+    if k <= 0 or secs <= 0 or times <= 0 or wait < 0:
         return "-", "-", "-"
-    share = 100 * wait / (wait + run)
-    return (f"{wait:,.1f} ms over {secs:.0f} s, {k} virtual CPUs", f"{share:.1f}% (ran {run / 1000:,.1f} s)",
-            f"{wait * 1000 / times:,.1f} µs")
+    return f"{wait:,.1f} ms over {secs:.0f} s, {k} virtual CPUs", f"{times:,}", f"{wait * 1000 / times:,.1f} µs"
 
 
 def fmt(v):
@@ -131,11 +130,11 @@ def main(argv):
               f"{h.get('host load before', '-')} | {h.get('host load after', '-')} |")
 
     print("\n**The host's hold on the virtual machine** (run-queue wait of the VM's virtual CPU threads during each case)\n")
-    print("| Case | Host kept the virtual CPUs waiting | Share of the time they were ready to run | Mean wait each time one ran |")
+    print("| Case | Host kept the virtual CPUs waiting | Times put on a processor | Mean wait each time |")
     print("|:---|---:|---:|---:|")
     for c in cases:
-        total, share, mean = vcpu_wait(data[c][1]["host"])
-        print(f"| {LABELS[c]} | {total} | {share} | {mean} |")
+        total, times, mean = vcpu_wait(data[c][1]["host"])
+        print(f"| {LABELS[c]} | {total} | {times} | {mean} |")
 
     ticks = {}
     for c in cases:

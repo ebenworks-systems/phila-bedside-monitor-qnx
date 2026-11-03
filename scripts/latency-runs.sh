@@ -96,7 +96,7 @@ for c in "${cases[@]}"; do
         k=0
     fi
     load_after="$(cut -d' ' -f1-3 /proc/loadavg)"
-    mkdir -p "$out/$c"
+    rm -rf -- "${out:?}/$c" && mkdir -p "$out/$c"   # nothing from an earlier pass mixes in
     for f in monitor.log sensor.log hog.log latency.csv record.jsonl uname.txt pidin-info.txt qtime.txt threads-under-load.txt \
              pidin-under-load.txt latency-mid.txt done; do
         "$q" get "$vm" "/data/phila/runs/$c/$f" "$out/$c/$f" 2>/dev/null || true
@@ -105,8 +105,9 @@ for c in "${cases[@]}"; do
         printf 'host load before: %s\nhost load after: %s\n' "$load_before" "$load_after"
         printf 'started: %s\n' "$(date -d "@${t0%.*}" '+%Y-%m-%d %H:%M:%S %Z')"
         awk -v t0="$t0" -v t1="$t1" -v r0="$run0" -v r1="$run1" -v w0="$wait0" -v w1="$wait1" -v n0="$n0" -v n1="$n1" -v k="$k" 'BEGIN {
-            printf "case seconds: %.1f\nvcpu threads: %d\nvcpu run ms: %.1f\nvcpu wait ms: %.1f\nvcpu times run: %d\n",
-                t1 - t0, k, (r1 - r0) / 1e6, (w1 - w0) / 1e6, n1 - n0 }'
+            printf "case seconds: %.1f\nvcpu threads: %d\n", t1 - t0, k
+            if (k > 0) printf "vcpu run ms: %.1f\nvcpu wait ms: %.1f\nvcpu times run: %d\n", (r1 - r0) / 1e6, (w1 - w0) / 1e6, n1 - n0
+            else printf "vcpu run ms: -\nvcpu wait ms: -\nvcpu times run: -\n" }'
     } > "$out/$c/host.txt"
     sed -n '2,6p' "$out/$c/monitor.log" 2>/dev/null || echo "  (no monitor log)"
 done
