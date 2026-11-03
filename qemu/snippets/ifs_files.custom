@@ -1,0 +1,4 @@
+# ifs_files.custom - copied into <vm>/local/snippets/ by scripts/image.sh.
+# SDP 8.0's current OpenSSH runs a separate sshd-auth helper at /usr/libexec/sshd-auth. mkqnximage's file
+# list ships sshd-session but not sshd-auth, so without this link the guest's sshd drops every connection.
+[type=link] /usr/libexec/sshd-auth=/system/bin/sshd-auth
