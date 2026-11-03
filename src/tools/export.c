@@ -179,7 +179,8 @@ int main(int argc, char **argv)
         fprintf(out, "%s]%s\n", counts[sec] ? "\n  " : "", sec < 2 ? "," : "");
     }
     fprintf(out, "}\n");
-    if (out != stdout && ((ferror(out) | (fclose(out) != 0)) || rename(tmp_path, argv[2]) != 0)) {
+    int write_failed = out != stdout && ferror(out);   /* read before fclose() closes the stream */
+    if (out != stdout && (fclose(out) != 0 || write_failed || rename(tmp_path, argv[2]) != 0)) {
         perror(argv[2]);
         remove(tmp_path);
         return 1;
