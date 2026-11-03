@@ -157,7 +157,7 @@ static void *sensor_main(void *arg)
         msg.seq = (uint32_t)k;
         if (MsgSend(g_coid, &msg, sizeof msg, NULL, 0) == -1) {
             ctx->failed++;
-            carry += msg.missed; /* the monitor did not hear of them */
+            carry += msg.missed + 1; /* the monitor heard of none of them, nor of this deadline */
             if (errno == EBADF || errno == ESRCH) {
                 fprintf(stderr, "phila-sensord: the monitor has gone (%s)\n", strerror(errno));
                 break;

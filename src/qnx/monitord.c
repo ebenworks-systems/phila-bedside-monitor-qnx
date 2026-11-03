@@ -635,8 +635,14 @@ static void finish(void)
      * takes no more, so the record, latency.csv and the summary below hold
      * the same alarms. The lock is never given back; the process exits. */
     pthread_mutex_lock(&M.alarm_lock);
-    /* Events queued from here on are never raised; they are not drops. */
-    uint32_t evq_dropped = M.evq_dropped;
+    /* The counts end here too: the intake goes on taking readings while the
+     * recorder finishes, and events queued from now on are never raised,
+     * which is not a drop. */
+    pthread_mutex_lock(&M.lock);
+    uint64_t readings = M.readings, missed = M.missed;
+    uint32_t evq_dropped = M.evq_dropped, refused = M.refused;
+    int intake_max_prio = M.intake_max_prio;
+    pthread_mutex_unlock(&M.lock);
     rec_event("WARD", "monitor stopped after %.1f s", (double)(rt_now_ns() - M.start_ns) / 1e9);
     pthread_mutex_lock(&M.rec_lock);
     M.rec_stop = 1;
@@ -651,14 +657,14 @@ static void finish(void)
     latency_summary(LAT_CLINICAL, SPAN_PIPELINE, p);
     unsigned nt = latency_summary(LAT_TECHNICAL, SPAN_TOTAL, t);
     printf("phila-monitord: %llu readings, %llu missed sensor deadlines, %llu record lines\n",
-           (unsigned long long)M.readings, (unsigned long long)M.missed, (unsigned long long)M.rec_written);
+           (unsigned long long)readings, (unsigned long long)missed, (unsigned long long)M.rec_written);
     printf("phila-monitord: clinical alarm latency over %u alarms (us): min %.1f, median %.1f, p99 %.1f, p99.9 %.1f, "
            "max %.1f\n", n, s[0], s[1], s[2], s[3], s[4]);
     printf("phila-monitord:   of which timer wake: median %.1f, max %.1f; alarm pipeline: median %.1f, max %.1f\n", w[1],
            w[4], p[1], p[4]);
     printf("phila-monitord: technical alarms %u, max %.1f us\n", nt, t[4]);
     printf("phila-monitord: intake ran at priority %d at most; dropped alarm events %u, dropped record lines %u, "
-           "refused messages %u\n", M.intake_max_prio, evq_dropped, M.rec_dropped, M.refused);
+           "refused messages %u\n", intake_max_prio, evq_dropped, M.rec_dropped, refused);
     if (M.record_path != NULL && M.broken_seq > 0)
         printf("phila-monitord: the record broke at line %llu (a write to the disk failed); no head\n",
                (unsigned long long)M.broken_seq);

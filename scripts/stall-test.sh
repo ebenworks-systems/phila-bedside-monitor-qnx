@@ -12,8 +12,12 @@
 # stall-test; STALL_OUT replaces results/stall-test). host.txt holds the host's
 # load, how long the host kept the VM's virtual CPU threads waiting for a
 # processor, and each stall's start (seconds after the case started, and the
-# clock time) and its measured length. A stopped process is not waiting for a
-# processor, so the stalls themselves are not in that wait.
+# clock time) and its measured length. The start of the case is when the ssh
+# command that starts it returned; the first reading's deadline comes about
+# 1.5 s later (run-case.sh starts the sensors a second after the monitor, and
+# they begin on a 100 ms boundary at least half a second on). A stopped
+# process is not waiting for a processor, so the stalls themselves are not in
+# that wait.
 #
 # QNX_BUILD names another build folder to copy (default build/qnx-x86_64), so
 # an older build can be tested with this script.
@@ -51,6 +55,12 @@ fi
 for f in "$build"/phila-*; do "$q" put "$vm" "$f" "/data/phila/bin/$(basename "$f")"; done
 "$q" put "$vm" "$here/scripts/run-case.sh" /data/phila/run-case.sh
 
+# A case still running in the guest (an interrupted run) would share the monitor's name and folder.
+if "$q" ssh "$vm" 'pidin -p phila-monitord -f a; pidin -p phila-sensord -f a' 2>/dev/null | grep -q '[0-9]'; then
+    echo "a phila-monitord or phila-sensord is still running in the guest; wait for it or slay it first" >&2
+    exit 1
+fi
+
 load_before="$(cut -d' ' -f1-3 /proc/loadavg)"
 read -r run0 wait0 n0 k0 pid0 <<< "$(vcpu_stat)"
 "$q" ssh "$vm" "nohup sh /data/phila/run-case.sh stall-test designed $secs > /dev/null 2>&1 &"
@@ -58,7 +68,9 @@ t0="$(date +%s.%N)"
 echo "$(date '+%H:%M:%S') stall test $name: designed, ${secs} s, no load; host load $load_before"
 
 stall_lines=()
-trap 'kill -CONT "$pid0" 2>/dev/null' EXIT INT TERM   # never leave the VM frozen
+trap 'kill -CONT "$pid0" 2>/dev/null' EXIT   # never leave the VM frozen
+trap 'exit 130' INT
+trap 'exit 143' TERM
 for s in "${stalls[@]}"; do
     read -r at len <<< "$s"
     while awk -v t0="$t0" -v at="$at" -v now="$(date +%s.%N)" 'BEGIN {exit !(now - t0 < at)}'; do sleep 0.05; done

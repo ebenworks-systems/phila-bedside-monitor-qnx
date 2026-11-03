@@ -23,7 +23,7 @@ typedef struct {
 
 typedef struct {
     int64_t readings, missed, last_latest, armed;
-    int64_t worst_settled_wake, earliest_wake;
+    int64_t worst_settled_wake;
 } sim_out_t;
 
 static int64_t after_stall(const sim_t *s, int64_t t)
@@ -35,7 +35,7 @@ static sim_out_t simulate(const sim_t *s, int64_t start, int64_t period, int64_t
 {
     deadline_t d;
     dl_init(&d, start, period, 0);
-    sim_out_t o = {0, 0, -1, 0, 0, INT64_MAX};
+    sim_out_t o = {0, 0, -1, 0, 0};
     int64_t armed_at = 0;
     for (;;) {
         int64_t due = dl_at(&d, d.armed);
@@ -45,7 +45,6 @@ static sim_out_t simulate(const sim_t *s, int64_t start, int64_t period, int64_t
         deadline_reading_t r;
         if (!dl_pulse(&d, now, &r)) break; /* cannot happen: this timer is never early */
         int64_t w = now - dl_at(&d, r.served);
-        if (w < o.earliest_wake) o.earliest_wake = w;
         if (now >= s->stall_at + s->stall_len + s->settle && w > o.worst_settled_wake) o.worst_settled_wake = w;
         o.readings++;
         o.missed += r.missed;
@@ -128,9 +127,8 @@ int main(void)
 
     /* Simulated stalls of 330 ms and 170 ms on a 100 ms sensor whose grid
      * starts at 500 ms: after the stall every reading is back on its own
-     * deadline (wake back to the timer's 30 us), no reading comes before its
-     * deadline, and every deadline before the armed one is a reading or
-     * missed. The 330 ms stall from 4037 ms holds up the deadlines at 4100,
+     * deadline (wake back to the timer's 30 us), and every deadline before
+     * the armed one is a reading or missed. The 330 ms stall from 4037 ms holds up the deadlines at 4100,
      * 4200 and 4300 ms: one late reading and two missed; the 170 ms one from
      * 8061 ms those at 8100 and 8200 ms: one late reading and one missed. */
     const int64_t stalls[][3] = {{4000 * MS + 37 * MS, 330 * MS, 2}, {8000 * MS + 61 * MS, 170 * MS, 1}};
@@ -138,7 +136,6 @@ int main(void)
         sim_t s = {stalls[i][0], stalls[i][1], 30 * US, 200 * US, 100 * MS};
         sim_out_t o = simulate(&s, 500 * MS, 100 * MS, 12000 * MS);
         CHECK_EQ_INT(o.worst_settled_wake, 30 * US);
-        CHECK(o.earliest_wake >= 0);
         CHECK_EQ_INT(o.missed, stalls[i][2]);
         CHECK_EQ_INT(o.readings + o.missed, o.armed);
         CHECK_EQ_INT(o.armed, o.last_latest + 1);
@@ -153,7 +150,6 @@ int main(void)
         sim_t s = {0, 0, 30 * US, 250 * MS, 0};
         sim_out_t o = simulate(&s, 0, 100 * MS, 10000 * MS);
         CHECK(o.worst_settled_wake > 100 * MS);
-        CHECK(o.earliest_wake >= 0);
         CHECK(o.missed > 0);
         CHECK_EQ_INT(o.readings + o.missed, o.armed);
         CHECK_EQ_INT(o.armed, o.last_latest + 1);

@@ -175,7 +175,8 @@ def main(argv):
             continue
         clin = sorted((r for r in data[c][0] if r[0] in CLINICAL), key=lambda r: r[4])
         print(f"\n**Timer wake every ten seconds, {LABELS[c]}** (each run of 100 clinical alarms; "
-              f"seconds from the first alarm's deadline)\n")
+              f"From and To count from the first alarm's deadline, about 1.5 s after the start the stall "
+              f"times count from)\n")
         for st in data[c][1]["stalls"]:
             print(f"- Host stall: {st}")
         print("\n| Window | From | To | Median wake | Max wake | Readings taken before their deadline |")
