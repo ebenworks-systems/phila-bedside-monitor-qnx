@@ -6,8 +6,11 @@
 Prints a Markdown table per span (total, timer wake, alarm pipeline) for the
 clinical alarms of every case found, plus the technical alarms, missed sensor
 deadlines, the host's load, how long the host kept the VM's virtual CPUs
-waiting and the guest's clock tick, and optionally draws a chart on a white
-background. Only numbers read from the files are printed.
+waiting, whether the monitor's own summary counted the same alarms as
+latency.csv, the timer wake of every ten seconds for a case whose host.txt
+names stalls (scripts/stall-test.sh), and the guest's clock tick, and
+optionally draws a chart on a white background. Only numbers read from the
+files are printed.
 
 Prototype for a hackathon, not a medical device, not for clinical use.
 SPDX-License-Identifier: MIT
@@ -26,6 +29,8 @@ LABELS = {
     "designed-hog10": "Designed, hog RR 10",
     "naive-hog10": "Naive, hog RR 10",
     "naive-hog35": "Naive, hog FIFO 35",
+    "before-fix": "Before the fix: periodic timer, two host stalls",
+    "after-fix": "After the fix: one-shot timer, two host stalls",
 }
 CLINICAL = {"alarm", "escalate"}
 
@@ -42,25 +47,31 @@ def load_case(path):
         for r in csv.DictReader(f):
             sched, sample, raised = int(r["sched_ns"]), int(r["sample_ns"]), int(r["raised_ns"])
             rows.append((r["kind"], (raised - sched) / 1000, (sample - sched) / 1000, (raised - sample) / 1000, sched))
-    info = {"missed": None, "hog": "", "qtime": None}
+    info = {"missed": None, "hog": "", "qtime": None, "summary": (None, None)}
     try:
         log = open(os.path.join(path, "monitor.log")).read()
         m = re.search(r"(\d+) missed sensor deadlines", log)
         info["missed"] = int(m.group(1)) if m else None
+        clin = re.search(r"clinical alarm latency over (\d+) alarms", log)
+        tech = re.search(r"technical alarms (\d+)", log)
+        info["summary"] = (int(clin.group(1)) if clin else None, int(tech.group(1)) if tech else None)
     except OSError:
         pass
     try:
         info["hog"] = open(os.path.join(path, "hog.log")).read().strip().splitlines()[0]
     except (OSError, IndexError):
         pass
-    host = {}
+    host, stalls = {}, []
     try:
         for line in open(os.path.join(path, "host.txt")):
             k, _, v = line.partition(":")
-            host[k.strip()] = v.strip()
+            if k.strip() == "stall":
+                stalls.append(v.strip())
+            else:
+                host[k.strip()] = v.strip()
     except OSError:
         pass
-    info["host"] = host
+    info["host"], info["stalls"] = host, stalls
     try:
         q = open(os.path.join(path, "qtime.txt")).read()
         inc, cps = re.search(r"nsec_inc:([0-9a-fA-F]+)", q), re.search(r"CPS:([0-9a-fA-F]+)", q)
@@ -100,7 +111,10 @@ def main(argv):
         return 1
     root = argv[1]
     chart = argv[argv.index("--chart") + 1] if "--chart" in argv else None
-    cases = [c for c in ORDER if os.path.isfile(os.path.join(root, c, "latency.csv"))]
+    found = sorted(d for d in os.listdir(root) if os.path.isfile(os.path.join(root, d, "latency.csv")))
+    cases = [c for c in ORDER if c in found] + [c for c in found if c not in ORDER]
+    for c in cases:
+        LABELS.setdefault(c, c)
     if not cases:
         print(f"no cases with latency.csv under {root}", file=sys.stderr)
         return 1
@@ -142,6 +156,35 @@ def main(argv):
         lo, hi = (fmt(min(meds)), fmt(max(meds))) if meds else ("-", "-")
         over = f"{sum(m > 1000 for m in meds)} of {len(meds)}" if meds else "-"
         print(f"| {LABELS[c]} | {lo} | {hi} | {over} | {len(early)} | {fmt(min(early)) if early else '-'} |")
+
+    print("\n**Alarms counted** (the monitor's own summary in monitor.log against the rows of latency.csv)\n")
+    print("| Case | Clinical, summary | Clinical, latency.csv | Technical, summary | Technical, latency.csv | Same |")
+    print("|:---|---:|---:|---:|---:|:---|")
+    for c in cases:
+        rows, info = data[c]
+        clin_csv = sum(1 for r in rows if r[0] in CLINICAL)
+        tech_csv = sum(1 for r in rows if r[0] == "technical")
+        clin_log, tech_log = info["summary"]
+        same = "yes" if (clin_log, tech_log) == (clin_csv, tech_csv) else "no"
+        show = lambda v: "-" if v is None else f"{v:,}"
+        print(f"| {LABELS[c]} | {show(clin_log)} | {clin_csv:,} | {show(tech_log)} | {tech_csv:,} | {same} |")
+
+    for c in cases:
+        if not data[c][1]["stalls"]:
+            continue
+        clin = sorted((r for r in data[c][0] if r[0] in CLINICAL), key=lambda r: r[4])
+        print(f"\n**Timer wake every ten seconds, {LABELS[c]}** (each run of 100 clinical alarms; "
+              f"seconds from the first alarm's deadline)\n")
+        for st in data[c][1]["stalls"]:
+            print(f"- Host stall: {st}")
+        print("\n| Window | From | To | Median wake | Max wake | Readings taken before their deadline |")
+        print("|---:|---:|---:|---:|---:|---:|")
+        t0 = clin[0][4] if clin else 0
+        for i in range(0, len(clin) - 99, 100):
+            w = clin[i:i + 100]
+            wake = [r[2] for r in w]
+            print(f"| {i // 100 + 1} | {(w[0][4] - t0) / 1e9:.1f} s | {(w[-1][4] - t0) / 1e9:.1f} s | "
+                  f"{fmt(statistics.median(wake))} | {fmt(max(wake))} | {sum(1 for x in wake if x < 0)} |")
 
     print("\n**The host's hold on the virtual machine** (run-queue wait of the VM's virtual CPU threads during each case)\n")
     print("| Case | Host kept the virtual CPUs waiting | Times put on a processor | Mean wait each time |")

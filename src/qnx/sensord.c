@@ -2,12 +2,14 @@
  * sensord.c - simulated bedside sensors.
  *
  * One thread per sensor channel (pulse oximeter, respiration, blood
- * pressure, temperature). Each thread owns a private channel and a periodic
- * timer that delivers a pulse to it; on every pulse the thread reads its
- * channel for all four beds from the scenario and sends one message to the
- * monitor with MsgSend(). The message carries two times: when the reading
- * was due (the timer deadline) and when the thread actually ran, so the
- * monitor can measure the whole path from deadline to alarm.
+ * pressure, temperature). Each thread owns a private channel and a one-shot
+ * timer, armed at one deadline at a time on the grid start + k * period,
+ * that delivers a pulse to it; on every pulse the thread reads its channel
+ * for all four beds from the scenario, sends one message to the monitor
+ * with MsgSend() and arms the timer at the next deadline still ahead. The
+ * message carries two times: when the reading was due (the timer deadline)
+ * and when the thread actually ran, so the monitor can measure the whole
+ * path from deadline to alarm.
  *
  *   phila-sensord [--scenario ward|probe] [--seed N] [--duration SECONDS] [--naive] [--tick-timers]
  *
@@ -28,6 +30,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "phila/deadline.h"
 #include "phila/scenario.h"
 #include "protocol.h"
 #include "rt.h"
@@ -46,6 +49,15 @@ typedef struct {
     int64_t readings; /* readings taken, whether or not the send worked */
 } sensor_ctx_t;
 
+/* Arm the one-shot timer at an absolute time; it_interval stays zero. */
+static int arm(timer_t timer, int64_t at_ns)
+{
+    struct itimerspec its;
+    memset(&its, 0, sizeof its);
+    rt_ts(&its.it_value, at_ns);
+    return timer_settime(timer, TIMER_ABSTIME, &its, NULL);
+}
+
 static void *sensor_main(void *arg)
 {
     sensor_ctx_t *ctx = arg;
@@ -59,7 +71,7 @@ static void *sensor_main(void *arg)
         return NULL;
     }
 
-    /* A periodic timer whose expiry is a pulse at the sensor's priority. */
+    /* A one-shot timer whose expiry is a pulse at the sensor's priority. */
     struct sigevent ev;
     SIGEV_PULSE_INIT(&ev, self, prio, PULSE_TICK, ctx->sensor);
     timer_t timer;
@@ -82,10 +94,19 @@ static void *sensor_main(void *arg)
             ctx->hires = 1;
         }
     }
-    struct itimerspec its;
-    rt_ts(&its.it_value, g_start_ns);
-    rt_ts(&its.it_interval, period);
-    if (timer_settime(timer, TIMER_ABSTIME, &its, NULL) == -1) {
+    /* One deadline at a time. A periodic timer (it_interval set) kept the
+     * late phase of a host stall of hundreds of milliseconds for the rest of
+     * the run (seen on 4 Nov 2026); arming each deadline anew at its own
+     * absolute time puts the next expiry back on the grid whatever a stall
+     * did. No early allowance: the kernel expires a timer only once
+     * CLOCK_MONOTONIC, the clock rt_now_ns() reads, has reached it, and a
+     * tolerance only lets it fire later; in the clean runs of 4 Nov no
+     * reading came before its deadline (earliest 6.1 us after it with
+     * high-resolution timers, 570.1 us with tick timers). A pulse before its
+     * deadline would be no reading, and the timer is armed for it again. */
+    deadline_t dl;
+    dl_init(&dl, g_start_ns, period, 0);
+    if (arm(timer, dl_at(&dl, dl.armed)) == -1) {
         perror("phila-sensord: timer_settime");
         return NULL;
     }
@@ -94,7 +115,7 @@ static void *sensor_main(void *arg)
     memset(&msg, 0, sizeof msg);
     msg.type = PHILA_MSG_READING;
     msg.sensor = (uint16_t)ctx->sensor;
-    int64_t last_k = -1;
+    uint32_t carry = 0; /* deadlines skipped since the last message */
 
     for (;;) {
         struct _pulse p;
@@ -103,23 +124,24 @@ static void *sensor_main(void *arg)
         int64_t now = rt_now_ns();
         if (g_end_ns != 0 && now >= g_end_ns) break;
 
-        /* Which deadline is this pulse for? The next one due is last_k + 1.
-         * A high-resolution timer can fire a few microseconds before its
-         * deadline, so a pulse up to 1 ms early counts as on time; anything
-         * earlier is a pulse that queued up while the thread was held up,
-         * for a deadline already served. If the thread was held up past
-         * further deadlines, k is the latest one passed, and the delay still
-         * counts from the oldest deadline not yet served. */
-        const int64_t early = period / 2 < 1000000LL ? period / 2 : 1000000LL;
-        int64_t oldest = last_k + 1;
-        if (now < g_start_ns + oldest * period - early) continue;
-        int64_t k = (now - g_start_ns) / period;
-        if (k < oldest) k = oldest;
-        msg.missed = (uint32_t)(k - oldest);
-        ctx->missed += msg.missed;
-        last_k = k;
+        /* The pulse is for the armed deadline. If the thread was held up
+         * past further deadlines, one reading stands for the latest one
+         * passed, its delay still counts from the armed deadline, and the
+         * deadlines between are missed. */
+        deadline_reading_t r;
+        if (!dl_pulse(&dl, now, &r)) {
+            if (arm(timer, dl_at(&dl, dl.armed)) == -1) {
+                perror("phila-sensord: timer_settime");
+                break;
+            }
+            continue;
+        }
+        int64_t k = r.latest;
+        msg.missed = r.missed + carry;
+        ctx->missed += r.missed;
+        carry = 0;
 
-        msg.t_sched_ns = g_start_ns + oldest * period;
+        msg.t_sched_ns = dl_at(&dl, r.served);
         msg.t_sample_ns = now;
         /* The ward follows the clock. The probe alternates on every reading
          * actually taken, so a reading after any number of missed deadlines
@@ -135,12 +157,24 @@ static void *sensor_main(void *arg)
         msg.seq = (uint32_t)k;
         if (MsgSend(g_coid, &msg, sizeof msg, NULL, 0) == -1) {
             ctx->failed++;
+            carry += msg.missed; /* the monitor did not hear of them */
             if (errno == EBADF || errno == ESRCH) {
                 fprintf(stderr, "phila-sensord: the monitor has gone (%s)\n", strerror(errno));
                 break;
             }
         } else {
             ctx->sent++;
+        }
+
+        /* Armed after the send, so the reading's own path is the same as
+         * before; a deadline that passed meanwhile is skipped and counted
+         * as missed in the next message. */
+        uint32_t skipped = dl_advance(&dl, &r, rt_now_ns());
+        ctx->missed += skipped;
+        carry += skipped;
+        if (arm(timer, dl_at(&dl, dl.armed)) == -1) {
+            perror("phila-sensord: timer_settime");
+            break;
         }
     }
     timer_delete(timer);

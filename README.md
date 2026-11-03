@@ -10,7 +10,7 @@ Five small programs run on QNX:
 
 | Program | What it does |
 |:---|:---|
-| `phila-sensord` | One thread per sensor. A periodic high-resolution timer sends each thread a pulse at its deadline; the thread reads its sensor for all four beds and sends the readings to the monitor with `MsgSend()`. |
+| `phila-sensord` | One thread per sensor. A one-shot high-resolution timer, armed at each deadline in turn on a fixed grid, sends each thread a pulse at its deadline; the thread reads its sensor for all four beds, sends the readings to the monitor with `MsgSend()` and arms the next deadline, so a stall delays one reading and never moves the deadlines after it. |
 | `phila-monitord` | Receives the readings, scores NEWS2, decides alarms, raises them, keeps the record and serves the files under `/dev/phila/`. |
 | `phila-display` | The nurse's view in a terminal, read from `/dev/phila/status` and `/dev/phila/alarms` once a second. |
 | `phila-hog` | Spinning threads at a chosen priority, used to load the processors during the latency tests. |
@@ -33,7 +33,7 @@ The plan for this entry named QNX adaptive partitioning to cap the recorder's sh
 
 Running the monitor with `--naive` puts every thread at priority 10 round-robin and uses default tick-aligned timers. That is the comparison case in the latency runs: the same code with no priority design.
 
-The QNX features in use are message passing with priority inheritance (`name_attach()`, `name_open()`, `MsgSend()`, `MsgReceive()`, `MsgReply()`), pulses (`MsgSendPulse()`, `MsgReceivePulse()`), periodic and high-resolution timers (`timer_create()` with `SIGEV_PULSE_INIT`, `timer_settime()` with `TIMER_TOLERANCE`), a resource manager (`resmgr_attach()`, the `iofunc` layer and a per-open snapshot), `SCHED_SPORADIC`, mutexes with `PTHREAD_PRIO_INHERIT`, per-thread CPU-time clocks, named threads and `slog2` logging.
+The QNX features in use are message passing with priority inheritance (`name_attach()`, `name_open()`, `MsgSend()`, `MsgReceive()`, `MsgReply()`), pulses (`MsgSendPulse()`, `MsgReceivePulse()`), one-shot absolute and high-resolution timers (`timer_create()` with `SIGEV_PULSE_INIT`, `timer_settime()` with `TIMER_ABSTIME` and `TIMER_TOLERANCE`), a resource manager (`resmgr_attach()`, the `iofunc` layer and a per-open snapshot), `SCHED_SPORADIC`, mutexes with `PTHREAD_PRIO_INHERIT`, per-thread CPU-time clocks, named threads and `slog2` logging.
 
 ## The early warning score
 

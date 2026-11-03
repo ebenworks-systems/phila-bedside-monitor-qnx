@@ -120,7 +120,10 @@ static struct {
     int rec_stop;
     pthread_t rec_tid;
 
-    /* latency samples: appended by the alarm thread only */
+    /* latency samples: appended by the alarm thread only, which holds
+     * alarm_lock from taking a batch off the queue to its last record line;
+     * finish() takes it and keeps it, so no alarm is added after that */
+    pthread_mutex_t alarm_lock;
     lat_t *lat;
     unsigned lat_n;
 
@@ -398,6 +401,7 @@ static void *alarm_main(void *arg)
         if (MsgReceivePulse(M.alarm_chid, &p, sizeof p, NULL) == -1 || p.code != PULSE_ALARM) continue;
         for (;;) {
             int n = 0;
+            pthread_mutex_lock(&M.alarm_lock);
             pthread_mutex_lock(&M.lock);
             while (n < 64 && M.evq_head != M.evq_tail) {
                 ev[n++] = M.evq[M.evq_head];
@@ -407,7 +411,10 @@ static void *alarm_main(void *arg)
             for (int i = 0; i < n; i++) board_apply(&ev[i], now);
             int64_t raised = rt_now_ns(); /* the alarms are on the board */
             pthread_mutex_unlock(&M.lock);
-            if (n == 0) break;
+            if (n == 0) {
+                pthread_mutex_unlock(&M.alarm_lock);
+                break;
+            }
 
             for (int i = 0; i < n; i++) {
                 const bed_event_t *e = &ev[i];
@@ -443,6 +450,7 @@ static void *alarm_main(void *arg)
                 }
                 rec_push(&r);
             }
+            pthread_mutex_unlock(&M.alarm_lock);
         }
     }
     return NULL;
@@ -623,6 +631,10 @@ static unsigned latency_summary(lat_class_t cls, lat_span_t span, double out[5])
 
 static void finish(void)
 {
+    /* Stop the alarm thread first: once a batch it is raising is done it
+     * takes no more, so the record, latency.csv and the summary below hold
+     * the same alarms. The lock is never given back; the process exits. */
+    pthread_mutex_lock(&M.alarm_lock);
     rec_event("WARD", "monitor stopped after %.1f s", (double)(rt_now_ns() - M.start_ns) / 1e9);
     pthread_mutex_lock(&M.rec_lock);
     M.rec_stop = 1;
@@ -930,6 +942,7 @@ int main(int argc, char **argv)
     if (M.recq == NULL || M.lat == NULL) die("memory");
     lock_init(&M.lock);
     lock_init(&M.rec_lock);
+    lock_init(&M.alarm_lock);
     pthread_condattr_t ca;
     pthread_condattr_init(&ca);
     pthread_condattr_setclock(&ca, CLOCK_MONOTONIC);

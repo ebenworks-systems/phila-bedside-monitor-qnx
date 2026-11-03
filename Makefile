@@ -18,8 +18,8 @@ CPPFLAGS := -Iinclude
 HOST_CFLAGS := $(CFLAGS) $(WARN) -std=c11 -D_DEFAULT_SOURCE -D_POSIX_C_SOURCE=200809L
 QNX_CFLAGS  := $(CFLAGS) $(WARN) -std=gnu11 -D_QNX_SOURCE
 
-CORE     := src/core/news2.c src/core/sha256.c src/core/record.c src/core/scenario.c src/core/beds.c
-TESTS    := news2 sha256 record beds scenario
+CORE     := src/core/news2.c src/core/sha256.c src/core/record.c src/core/scenario.c src/core/beds.c src/core/deadline.c
+TESTS    := news2 sha256 record beds scenario deadline
 QNX_BINS := phila-sensord phila-monitord phila-hog phila-display phila-export
 
 HOST_OUT := build/host
