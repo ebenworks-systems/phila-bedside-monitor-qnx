@@ -47,7 +47,7 @@ sha256: 5 checks, 0 failed
 record: 56 checks, 0 failed
 beds: 136 checks, 0 failed
 scenario: 226 checks, 0 failed
-deadline: 47 checks, 0 failed
+deadline: 44 checks, 0 failed
 verify_record.py: self-test passed
 ```
 
