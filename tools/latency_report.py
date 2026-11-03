@@ -71,17 +71,19 @@ def load_case(path):
 
 
 def vcpu_wait(host):
-    """The host's run-queue wait of the VM's virtual CPUs: total, share of their
-    time over the case, and the mean wait each time one was put on a processor."""
+    """The host's run-queue wait of the VM's virtual CPUs over the case: the total,
+    its share of the time they were ready to run (waiting or running), and the
+    mean wait each time one was put on a processor."""
     try:
         wait, run = float(host["vcpu wait ms"]), float(host["vcpu run ms"])
         secs, k, times = float(host["case seconds"]), int(host["vcpu threads"]), int(host["vcpu times run"])
     except (KeyError, ValueError):
-        return "-", "-"
-    if k <= 0 or secs <= 0 or times <= 0:
-        return "-", "-"
-    share = 100 * wait / (secs * 1000 * k)
-    return f"{wait:,.1f} ms ({share:.2f}% of {k} × {secs:.0f} s)", f"{wait * 1000 / times:,.1f} µs"
+        return "-", "-", "-"
+    if k <= 0 or secs <= 0 or times <= 0 or wait < 0 or run <= 0:
+        return "-", "-", "-"
+    share = 100 * wait / (wait + run)
+    return (f"{wait:,.1f} ms over {secs:.0f} s, {k} virtual CPUs", f"{share:.1f}% (ran {run / 1000:,.1f} s)",
+            f"{wait * 1000 / times:,.1f} µs")
 
 
 def fmt(v):
@@ -129,11 +131,11 @@ def main(argv):
               f"{h.get('host load before', '-')} | {h.get('host load after', '-')} |")
 
     print("\n**The host's hold on the virtual machine** (run-queue wait of the VM's virtual CPU threads during each case)\n")
-    print("| Case | Host kept the virtual CPUs waiting | Mean wait each time one ran |")
-    print("|:---|---:|---:|")
+    print("| Case | Host kept the virtual CPUs waiting | Share of the time they were ready to run | Mean wait each time one ran |")
+    print("|:---|---:|---:|---:|")
     for c in cases:
-        total, mean = vcpu_wait(data[c][1]["host"])
-        print(f"| {LABELS[c]} | {total} | {mean} |")
+        total, share, mean = vcpu_wait(data[c][1]["host"])
+        print(f"| {LABELS[c]} | {total} | {share} | {mean} |")
 
     ticks = {}
     for c in cases:

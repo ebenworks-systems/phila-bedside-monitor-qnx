@@ -24,7 +24,30 @@ cases=("$@")
 q="$here/scripts/qemu-vm.sh"
 build="$here/build/qnx-x86_64"
 out="${LATENCY_OUT:-$here/results/latency}"   # LATENCY_OUT keeps a repeat pass apart
+case "$out" in /*) ;; *) out="$here/$out" ;; esac
 mkdir -p "$out"
+
+vcpu_stat() { # run ns, run-queue wait ns and times run, summed over the VM's virtual CPU threads; their count; QEMU's pid
+    local pid t r w s run=0 wt=0 n=0 k=0
+    pid="$(cat "$vm/qemu.pid" 2>/dev/null)" || pid=""
+    if [ -n "$pid" ] && [ -d "/proc/$pid" ]; then
+        for t in /proc/"$pid"/task/*; do
+            grep -qE '^CPU [0-9]+/(KVM|TCG)$' "$t/comm" 2>/dev/null || continue
+            read -r r w s < "$t/schedstat" || continue
+            run=$((run + r)); wt=$((wt + w)); n=$((n + s)); k=$((k + 1))
+        done
+    fi
+    echo "$run $wt $n $k ${pid:-none}"
+}
+read -r _ _ _ k pid <<< "$(vcpu_stat)"
+if [ "$k" -eq 0 ]; then
+    if [ "$pid" = none ] || [ ! -d "/proc/$pid" ]; then
+        echo "no running QEMU for $vm (qemu.pid missing or stale); start it with scripts/qemu-vm.sh start" >&2
+    else
+        echo "QEMU $pid has no CPU n/KVM threads, so it was started without debug-threads; restart it (qemu-vm.sh stop, start)" >&2
+    fi
+    exit 1
+fi
 
 "$q" ssh "$vm" 'mkdir -p /data/phila/bin /data/phila/runs'
 for f in "$build"/phila-*; do "$q" put "$vm" "$f" "/data/phila/bin/$(basename "$f")"; done
@@ -55,21 +78,10 @@ wait_quiet() {
     done
 }
 
-vcpu_stat() { # run ns, run-queue wait ns and times run, summed over the VM's virtual CPU threads; then the thread count
-    local pid t r w s run=0 wt=0 n=0 k=0
-    pid="$(cat "$vm/qemu.pid" 2>/dev/null)" || { echo "0 0 0 0"; return 0; }
-    for t in /proc/"$pid"/task/*; do
-        grep -qE '^CPU [0-9]+/(KVM|TCG)$' "$t/comm" 2>/dev/null || continue
-        read -r r w s < "$t/schedstat" || continue
-        run=$((run + r)); wt=$((wt + w)); n=$((n + s)); k=$((k + 1))
-    done
-    echo "$run $wt $n $k"
-}
-
 for c in "${cases[@]}"; do
     wait_quiet
     load_before="$(cut -d' ' -f1-3 /proc/loadavg)"
-    read -r run0 wait0 n0 _ <<< "$(vcpu_stat)"; t0="$(date +%s.%N)"
+    read -r run0 wait0 n0 k0 pid0 <<< "$(vcpu_stat)"; t0="$(date +%s.%N)"
     hog="$(hog_for "$c")"
     echo "$(date '+%H:%M:%S') case $c: mode $(mode_for "$c"), ${secs} s, hog: ${hog:-none}; host load $(cut -d' ' -f1-3 /proc/loadavg)"
     "$q" ssh "$vm" "nohup sh /data/phila/run-case.sh $c $(mode_for "$c") $secs $hog > /dev/null 2>&1 &"
@@ -78,8 +90,11 @@ for c in "${cases[@]}"; do
         if "$q" ssh "$vm" "test -f /data/phila/runs/$c/done" 2>/dev/null; then break; fi
         sleep 5
     done
-    read -r run1 wait1 n1 k <<< "$(vcpu_stat)"; t1="$(date +%s.%N)"
-    [ "$k" -gt 0 ] || echo "  no CPU n/KVM threads in QEMU; the VM was started without debug-threads, so restart it (qemu-vm.sh stop, start)" >&2
+    read -r run1 wait1 n1 k pid1 <<< "$(vcpu_stat)"; t1="$(date +%s.%N)"
+    if [ "$k" -eq 0 ] || [ "$k" != "$k0" ] || [ "$pid1" != "$pid0" ]; then
+        echo "  the VM's virtual CPU threads changed during the case (QEMU $pid0 with $k0, then $pid1 with $k); no host wait recorded" >&2
+        k=0
+    fi
     load_after="$(cut -d' ' -f1-3 /proc/loadavg)"
     mkdir -p "$out/$c"
     for f in monitor.log sensor.log hog.log latency.csv record.jsonl uname.txt pidin-info.txt qtime.txt threads-under-load.txt \
