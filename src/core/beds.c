@@ -54,6 +54,25 @@ void ward_obs(const ward_t *w, int b, news2_obs_t *o)
     if (bed->have[SENSOR_TEMP]) o->temp_dc = bed->val[SENSOR_TEMP][0];
 }
 
+/* The band the bed would be in if each missing sensor still read what it
+ * last read well. */
+static news2_risk_t last_known_risk(const ward_t *w, int b)
+{
+    const bed_t *bed = &w->bed[b];
+    news2_obs_t o;
+    ward_obs(w, b, &o);
+    if (!bed->have[SENSOR_PULSE_OX] && bed->seen[SENSOR_PULSE_OX]) {
+        o.spo2 = bed->val[SENSOR_PULSE_OX][0];
+        o.pulse = bed->val[SENSOR_PULSE_OX][1];
+    }
+    if (!bed->have[SENSOR_RESP] && bed->seen[SENSOR_RESP]) o.resp_rate = bed->val[SENSOR_RESP][0];
+    if (!bed->have[SENSOR_BP] && bed->seen[SENSOR_BP]) o.systolic = bed->val[SENSOR_BP][0];
+    if (!bed->have[SENSOR_TEMP] && bed->seen[SENSOR_TEMP]) o.temp_dc = bed->val[SENSOR_TEMP][0];
+    news2_result_t r;
+    if (news2_assess(&o, &r) != NEWS2_OK) return NEWS2_RISK_HIGH; /* cannot happen; never clear on an error */
+    return r.risk;
+}
+
 static void add_red(char *buf, size_t cap, bool *first, const char *name)
 {
     size_t n = strlen(buf);
@@ -108,22 +127,39 @@ static int rescore(ward_t *w, int b, int64_t t_sched, int64_t t_sample, int64_t 
         reason_for(bed, e.reason, sizeof e.reason);
         bed->alarm_level = level;
         bed->acked = false;
+        bed->held_stale = false;
         n = push(ev, cap, n, &e);
-    } else if (level == NEWS2_RISK_LOW && bed->alarm_level != NEWS2_RISK_LOW && bed->complete) {
-        e.kind = BEV_ALARM_CLEAR;
+    } else if (level == NEWS2_RISK_LOW && bed->alarm_level != NEWS2_RISK_LOW) {
+        if (bed->complete || last_known_risk(w, b) == NEWS2_RISK_LOW) {
+            e.kind = BEV_ALARM_CLEAR;
+            reason_for(bed, e.reason, sizeof e.reason);
+            bed->alarm_level = NEWS2_RISK_LOW;
+            bed->acked = false;
+            bed->held_stale = false;
+            n = push(ev, cap, n, &e);
+        } else {
+            bed->held_stale = true;
+        }
+    } else if (level != NEWS2_RISK_LOW && bed->held_stale) {
+        /* The alarm was open only on a missing sensor's last reading, and the
+         * readings present now call for one on their own: a new onset, which
+         * the nurse has not acknowledged. */
+        e.kind = BEV_ALARM_ON;
+        e.level = bed->alarm_level;
         reason_for(bed, e.reason, sizeof e.reason);
-        bed->alarm_level = NEWS2_RISK_LOW;
         bed->acked = false;
+        bed->held_stale = false;
         n = push(ev, cap, n, &e);
     }
     /* A fall to a lower band that is still above low changes nothing: the
      * alarm holds the highest band it reached until the bed is back to low,
      * so a score wobbling across a band edge cannot raise the same alarm
      * again and again. A missing parameter scores 0, so it can only lower
-     * the score: an alarm clears only on a complete set of readings, never
-     * because the sensor that caused it went quiet. A rise while incomplete
-     * is real, since it rests on the readings present. The current band is
-     * always in bed->res.risk. */
+     * the score: while a sensor is missing, the alarm clears only if its
+     * last good reading would not keep the bed above low, so an alarm never
+     * clears because the sensor that caused it went quiet. A rise while
+     * incomplete is real, since it rests on the readings present. The
+     * current band is always in bed->res.risk. */
     return n;
 }
 
@@ -161,6 +197,7 @@ int ward_reading(ward_t *w, int b, sensor_t s, const int16_t v[2], int64_t t_sch
     bed->val[s][0] = v[0];
     bed->val[s][1] = s == SENSOR_PULSE_OX ? v[1] : 0;
     bed->have[s] = true;
+    bed->seen[s] = true;
     if (bed->lost[s]) n = tech(w, b, s, false, "reading", t_sched, t_sample, now, ev, cap, n);
     return rescore(w, b, t_sched, t_sample, now, ev, cap, n);
 }

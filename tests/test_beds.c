@@ -203,6 +203,50 @@ int main(void)
     CHECK_EQ_INT(ev[0].kind, BEV_TECH_ON);
     CHECK_EQ_STR(ev[0].reason, "silent:pulse-ox");
     CHECK_EQ_INT(w.bed[0].alarm_level, NEWS2_RISK_LOW_MEDIUM);
+    CHECK(w.bed[0].held_stale);
+
+    /* A missing sensor whose last reading was normal does not hold an
+     * alarm: the cuff is off, SpO2 alarms, is acknowledged and recovers, so
+     * the alarm clears; the next drop is a new alarm the nurse has not seen. */
+    ward_init(&w, &sc, 0);
+    all_normal(0, 0);
+    n = feed(0, SENSOR_BP, -1, -1, 10 * MS); /* the cuff comes off; it last read 120 */
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_TECH_ON);
+    n = feed(0, SENSOR_PULSE_OX, 89, 70, 20 * MS);
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_ALARM_ON);
+    CHECK(ward_ack(&w, 0));
+    n = feed(0, SENSOR_PULSE_OX, 97, 70, 30 * MS);
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_ALARM_CLEAR);
+    n = feed(0, SENSOR_PULSE_OX, 89, 70, 40 * MS);
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_ALARM_ON);
+    CHECK(!w.bed[0].acked);
+
+    /* An alarm held only on a missing sensor's last reading: a new red score
+     * from the readings present is a new onset, not hidden behind the
+     * acknowledged one. */
+    ward_init(&w, &sc, 0);
+    all_normal(0, 0);
+    n = feed(0, SENSOR_PULSE_OX, 89, 70, 10 * MS);
+    CHECK_EQ_INT(n, 1);
+    CHECK(ward_ack(&w, 0));
+    n = feed(0, SENSOR_PULSE_OX, -1, -1, 20 * MS); /* held on the last SpO2, 89 */
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_TECH_ON);
+    CHECK(w.bed[0].held_stale);
+    CHECK(w.bed[0].acked);
+    n = feed(0, SENSOR_RESP, 25, 0, 30 * MS); /* breathing rate 25: red */
+    CHECK_EQ_INT(n, 1);
+    CHECK_EQ_INT(ev[0].kind, BEV_ALARM_ON);
+    CHECK_EQ_INT(ev[0].level, NEWS2_RISK_LOW_MEDIUM);
+    CHECK_EQ_STR(ev[0].reason, "news2=3 red=rr incomplete");
+    CHECK(!w.bed[0].acked);
+    CHECK(!w.bed[0].held_stale);
+    /* The same band again from the readings present is a wobble, not a new alarm. */
+    CHECK_EQ_INT(feed(0, SENSOR_RESP, 26, 0, 40 * MS), 0);
 
     /* Events beyond the caller's array are counted, not written. */
     ward_init(&w, &sc, 0);

@@ -184,7 +184,7 @@ Over about four minutes, bed 2 deteriorates into the high band, bed 3's oxygen s
 
 ## 7. Keep the record without risking the alarm
 
-A snapshot of each bed every five seconds, every alarm and every nurse action are written to an append-only record. Each line holds the SHA-256 hash of the line before it and its own hash, so editing, removing or reordering a line breaks the chain from that point, unless whoever changed it also rewrote every hash after it. To catch that too, the recorder writes the chain's head, the latest line's number and hash, to the system log once a second, and the monitor prints it when it stops. The recorder thread writes the file and calls `fsync()` after every batch that holds an alarm.
+A snapshot of each bed every five seconds while every sensor on that bed is reading, every alarm and every nurse action are written to an append-only record. Each line holds the SHA-256 hash of the line before it and its own hash, so editing, removing or reordering a line breaks the chain from that point, unless whoever changed it also rewrote every hash after it. To catch that too, the recorder writes the chain's head, the latest line's number and hash, to the system log once a second, and the monitor prints it when it stops. The recorder thread writes the file and calls `fsync()` after every batch that holds an alarm.
 
 Writing to a disk can take a long time, so the recorder must never hold up the alarm path, and must not take more CPU than it should when it has a backlog. Older QNX releases offered adaptive partitioning for that. QNX's documentation for the 8.0 IDE says "QNX OS 8.0 does not support adaptive partitioning", so this monitor uses POSIX sporadic scheduling, which QNX 8.0 does support:
 
@@ -208,21 +208,18 @@ Intake shows its base priority, 10; it runs at 50 only while it serves a sensor.
 
 The alarm thread and the recorder share a queue, and its lock is a mutex with `PTHREAD_PRIO_INHERIT`. If the recorder (priority 30) holds the lock when the alarm thread (60) wants it, QNX raises the recorder to 60 until it lets go, so a program at priority 35 cannot stretch that wait.
 
-Check the record on QNX and again, independently, on your PC:
+Stop the display with Ctrl-C and the monitor with `slay`, which sends it SIGTERM. The monitor finishes the record and prints its head as it stops. Then check the record on QNX and again, independently, on your PC:
 
 ```sh
+slay phila-monitord              # prints "record head seq=N hash=..."
 bin/phila-export runs/ward.jsonl runs/ward-export.json
 # on the host
 scripts/qemu-vm.sh get ~/qnx-vm/phila /data/phila/runs/ward.jsonl ward.jsonl
 python3 tools/verify_record.py ward.jsonl
-```
-
-Change one digit in `ward.jsonl` and run the checker again: it names the line you changed. Then check the file against a head from the log, which a rewritten or shortened copy fails:
-
-```sh
-slog2info | grep "record head" | tail -1     # inside QNX: record head seq=N hash=...
 python3 tools/verify_record.py --head N HASH ward.jsonl
 ```
+
+Copy `ward.jsonl`, change one digit in the copy and run the first check on it: it names the line you changed. The head check is for a copy rewritten with every hash after the change recomputed, which still passes the chain but no longer has the logged hash at line N, and for a copy with lines cut off the end. While the monitor runs, `slog2info | grep "record head"` lists the heads logged so far; check a file only against a head logged before you copied it.
 
 ## 8. Load the CPUs and measure
 

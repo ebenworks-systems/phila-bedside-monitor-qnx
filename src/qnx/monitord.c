@@ -309,8 +309,10 @@ static void *intake_main(void *arg)
                 raised++;
             }
             const bed_t *bed = &M.ward.bed[b];
-            if (s == SENSOR_PULSE_OX && bed->complete && decided - M.last_obs_ns[b] >= M.obs_every_ns) {
-                M.last_obs_ns[b] = decided;
+            /* Snapshots follow the readings' deadlines, so they are exactly
+             * obs_every apart while the bed is complete. */
+            if (s == SENSOR_PULSE_OX && bed->complete && r->t_sched_ns - M.last_obs_ns[b] >= M.obs_every_ns) {
+                M.last_obs_ns[b] = r->t_sched_ns;
                 rec_entry_t *e = &obs[nobs++];
                 memset(e, 0, sizeof *e);
                 e->kind = REC_OBS;
@@ -461,6 +463,7 @@ static void *recorder_main(void *arg)
     static rec_entry_t batch[64];
     char line[REC_LINE_MAX];
     int64_t last_sync = rt_now_ns();
+    int64_t last_head = last_sync;
     uint64_t logged_seq = 0;
 
     for (;;) {
@@ -491,17 +494,22 @@ static void *recorder_main(void *arg)
             if (batch[i].kind == REC_ALARM) alarm = 1;
         }
         int64_t now = rt_now_ns();
-        int log_head = 0;
+        int synced = 0;
         if ((alarm || now - last_sync >= 1000000000LL) && n > 0) {
             fsync(fd); /* an alarm is on disk before the next batch */
-            log_head = now - last_sync >= 1000000000LL;
             last_sync = now;
+            synced = 1;
         }
         /* The chain catches a changed line only if nobody rewrote every hash
          * after it. The head (the last line's number and hash) goes to the
          * system log once a second, after the fsync, so a rewritten or
          * shortened file no longer matches a head logged before it. */
-        if (log_head && chain.next_seq - 1 != logged_seq) {
+        if (now - last_head >= 1000000000LL && chain.next_seq - 1 != logged_seq) {
+            if (!synced) { /* the logged head is always on disk */
+                fsync(fd);
+                last_sync = now;
+            }
+            last_head = now;
             logged_seq = chain.next_seq - 1;
             mlog(SLOG2_INFO, "record head seq=%llu hash=%s", (unsigned long long)logged_seq, chain.prev_hex);
         }

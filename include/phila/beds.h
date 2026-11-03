@@ -11,10 +11,13 @@
  *     low-medium (a single red score), medium (5 or 6) or high (7 or more),
  *     and is raised again whenever the band goes above the highest band
  *     this alarm has reached;
- *   - it holds that band until the bed falls back to low with every
- *     parameter read, then clears, so a score wobbling across a band edge
- *     does not repeat the alarm and a sensor that stops reading cannot
- *     clear it;
+ *   - it holds that band until the bed falls back to low, then clears, so a
+ *     score wobbling across a band edge does not repeat the alarm;
+ *   - a sensor that stops reading cannot clear the alarm: while one is
+ *     missing, the alarm clears only if the bed would still be low with that
+ *     sensor's last good reading; if the alarm is held on such last
+ *     readings alone and the readings present raise the score again, that
+ *     is a new onset the nurse has not acknowledged;
  *   - a technical alarm starts when a sensor reports "no reading" or has
  *     been silent for three of its sampling periods, and clears with the
  *     next good reading.
@@ -61,8 +64,9 @@ typedef struct {
 
 typedef struct {
     /* latest readings */
-    int16_t val[SENSOR_COUNT][2];
+    int16_t val[SENSOR_COUNT][2]; /* the last good reading, kept while the sensor is missing */
     bool have[SENSOR_COUNT];      /* a good reading is held */
+    bool seen[SENSOR_COUNT];      /* the sensor has read well at least once */
     bool lost[SENSOR_COUNT];      /* technical alarm active */
     int64_t last_ns[SENSOR_COUNT];/* time of the last reading, good or "none" */
     /* set by a clinician or nurse */
@@ -74,6 +78,7 @@ typedef struct {
     bool complete;                /* every parameter had a current reading */
     news2_risk_t alarm_level;     /* highest band of the active alarm; NEWS2_RISK_LOW when none */
     bool acked;                   /* a nurse acknowledged the current alarm */
+    bool held_stale;              /* the alarm is open only on the last readings of missing sensors */
     uint32_t readings;
 } bed_t;
 

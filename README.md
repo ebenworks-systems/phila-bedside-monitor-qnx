@@ -1,6 +1,6 @@
 # Phila Health Ecosystem bedside monitor prototype for QNX 8.0
 
-This is a bedside vital-signs monitor written for the QNX 8.0 real-time operating system and run in QEMU. Simulated sensors measure four fictional patients' pulse, oxygen saturation, breathing rate, blood pressure and temperature at fixed rates. The monitor scores every patient with the National Early Warning Score 2 (NEWS2) after each reading and puts an alarm on the nurse's board within a time it measures, including while other programs hold every processor. A snapshot of each bed every five seconds, every alarm and every nurse action go into an append-only record. Its lines are chained by SHA-256 hashes, and once a second the monitor writes the chain's latest hash to the system log, so a check against that logged hash catches a line edited, removed or reordered before it, even when every later hash was rewritten to match. The record exports as one plain JSON document.
+This is a bedside vital-signs monitor written for the QNX 8.0 real-time operating system and run in QEMU. Simulated sensors measure four fictional patients' pulse, oxygen saturation, breathing rate, blood pressure and temperature at fixed rates. The monitor scores every patient with the National Early Warning Score 2 (NEWS2) after each reading and puts an alarm on the nurse's board within a time it measures, including while other programs hold every processor. A snapshot of each bed every five seconds while every sensor on that bed is reading, every alarm and every nurse action go into an append-only record. Its lines are chained by SHA-256 hashes, and once a second the monitor writes the chain's latest hash to the system log, so a check against that logged hash catches a line edited, removed or reordered before it, even when every later hash was rewritten to match. The record exports as one plain JSON document.
 
 **This is a prototype for a hackathon. It is not a medical device and is not for clinical use.** The patients and readings are invented. Ebenworks built it for the QNX Global Hackathon 2026 as new work, separate from the products of Phila Health Ecosystem, which keeps clinics and health teams working without a signal. It shares no code with them.
 
@@ -39,7 +39,7 @@ The QNX features in use are message passing with priority inheritance (`name_att
 
 Scoring follows the NEWS2 chart in: Royal College of Physicians. *National Early Warning Score (NEWS) 2: Standardising the assessment of acute-illness severity in the NHS.* Updated report of a working party. London: RCP, 2017.
 
-Each of seven parameters scores 0 to 3 (breathing rate, oxygen saturation on Scale 1 or Scale 2, air or oxygen, systolic pressure, pulse, consciousness on the ACVPU scale and temperature). An alarm starts when a bed enters one of the report's clinical response bands: a single score of 3 (low-medium), an aggregate of 5 or 6 (medium), or 7 or more (high). It is raised again when the band goes above the highest band the alarm has reached, and it clears when the bed returns to low, so a score wobbling across a band edge does not repeat the alarm. A sensor that reports no reading, or that has been silent for three of its periods, raises a technical alarm and is left out of the score until it reads again. SpO2 Scale 2 and supplemental oxygen are set by a clinician through `/dev/phila/control`, and so is consciousness, because no sensor measures it.
+Each of seven parameters scores 0 to 3 (breathing rate, oxygen saturation on Scale 1 or Scale 2, air or oxygen, systolic pressure, pulse, consciousness on the ACVPU scale and temperature). An alarm starts when a bed enters one of the report's clinical response bands: a single score of 3 (low-medium), an aggregate of 5 or 6 (medium), or 7 or more (high). It is raised again when the band goes above the highest band the alarm has reached, and it clears when the bed returns to low, so a score wobbling across a band edge does not repeat the alarm. A sensor that reports no reading, or that has been silent for three of its periods, raises a technical alarm and is left out of the score until it reads again. While a sensor is missing, the alarm clears only if the bed would still be low with that sensor's last good reading, so a probe that falls off cannot clear the alarm it raised. If the alarm is held only on that last reading, a new red score from the sensors still reading raises a fresh alarm. SpO2 Scale 2 and supplemental oxygen are set by a clinician through `/dev/phila/control`, and so is consciousness, because no sensor measures it.
 
 `tests/test_news2.c` checks every band edge of the chart on both SpO2 scales.
 
@@ -85,12 +85,12 @@ cat /dev/phila/latency /dev/phila/threads
 slog2info | grep phila
 ```
 
-Stop the monitor with `kill` (it finishes the record and prints its latency summary and the record's head), then check and export the record:
+Stop the monitor with `slay phila-monitord` (it finishes the record and prints its latency summary and the record's head), then check and export the record:
 
 ```sh
 bin/phila-export runs/ward.jsonl runs/ward-export.json     # on QNX
 python3 tools/verify_record.py ward.jsonl                   # on the host, after scripts/qemu-vm.sh get
-python3 tools/verify_record.py --head SEQ HASH ward.jsonl   # SEQ and HASH from "record head" in slog2info
+python3 tools/verify_record.py --head SEQ HASH ward.jsonl   # SEQ and HASH from the "record head" line it printed
 ```
 
 The chain alone shows a changed line unless every hash after it was rewritten too. The head check closes that gap for every line written before the head was logged: a rewritten or shortened file no longer has that hash at that line.
