@@ -4,6 +4,8 @@
 #
 #   scripts/latency-runs.sh VMDIR SECONDS [CASE...]
 #
+# Results go to results/latency/CASE/, or to LATENCY_OUT/CASE/ when it is set.
+#
 # Cases: designed-idle designed-tick-idle designed-hog35 designed-hog10 naive-hog10 naive-hog35
 # Each hog uses two threads (one per virtual CPU) and starts ten seconds in.
 #
@@ -21,7 +23,7 @@ cases=("$@")
 [ ${#cases[@]} -gt 0 ] || cases=(designed-idle designed-tick-idle designed-hog35 designed-hog10 naive-hog10 naive-hog35)
 q="$here/scripts/qemu-vm.sh"
 build="$here/build/qnx-x86_64"
-out="$here/results/latency"
+out="${LATENCY_OUT:-$here/results/latency}"   # LATENCY_OUT keeps a repeat pass apart
 mkdir -p "$out"
 
 "$q" ssh "$vm" 'mkdir -p /data/phila/bin /data/phila/runs'
@@ -77,6 +79,7 @@ for c in "${cases[@]}"; do
         sleep 5
     done
     read -r run1 wait1 n1 k <<< "$(vcpu_stat)"; t1="$(date +%s.%N)"
+    [ "$k" -gt 0 ] || echo "  no CPU n/KVM threads in QEMU; the VM was started without debug-threads, so restart it (qemu-vm.sh stop, start)" >&2
     load_after="$(cut -d' ' -f1-3 /proc/loadavg)"
     mkdir -p "$out/$c"
     for f in monitor.log sensor.log hog.log latency.csv record.jsonl uname.txt pidin-info.txt qtime.txt threads-under-load.txt \

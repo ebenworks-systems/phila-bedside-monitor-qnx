@@ -63,7 +63,7 @@ def load_case(path):
     try:
         q = open(os.path.join(path, "qtime.txt")).read()
         inc, cps = re.search(r"nsec_inc:([0-9a-fA-F]+)", q), re.search(r"CPS:([0-9a-fA-F]+)", q)
-        if inc and cps:
+        if inc and cps and int(inc.group(1), 16) and int(cps.group(1), 16):
             info["qtime"] = (int(inc.group(1), 16), int(cps.group(1), 16))
     except OSError:
         pass
@@ -135,9 +135,13 @@ def main(argv):
         total, mean = vcpu_wait(data[c][1]["host"])
         print(f"| {LABELS[c]} | {total} | {mean} |")
 
-    ticks = {data[c][1]["qtime"] for c in cases if data[c][1]["qtime"]}
-    for inc, cps in sorted(ticks):
-        print(f"\nGuest clock (pidin syspage=qtime): tick {inc / 1e6:g} ms (nsec_inc {inc} ns); "
+    ticks = {}
+    for c in cases:
+        if data[c][1]["qtime"]:
+            ticks.setdefault(data[c][1]["qtime"], []).append(LABELS[c])
+    for (inc, cps), names in sorted(ticks.items()):
+        which = "every case" if len(names) == len(cases) else ", ".join(names)
+        print(f"\nGuest clock (pidin syspage=qtime, {which}): tick {inc / 1e6:g} ms (nsec_inc {inc} ns); "
               f"ClockCycles() at {cps:,} per second, {1e9 / cps:.2f} ns a cycle.")
 
     if chart:

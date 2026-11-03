@@ -1,2 +1,2 @@
 build/
-results/latency/*/record.jsonl
+results/*/*/record.jsonl
