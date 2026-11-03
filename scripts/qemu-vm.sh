@@ -35,7 +35,9 @@ start)
     accel=(-cpu max)
     [ -w /dev/kvm ] && accel=(-enable-kvm -cpu host)
     : > "$vm/console.log"
-    qemu-system-x86_64 \
+    # debug-threads names each virtual CPU's host thread "CPU n/KVM", so
+    # latency-runs.sh can read how long the host kept it waiting.
+    qemu-system-x86_64 -name phila-qnx,debug-threads=on \
         -smp "${QNX_VM_CPUS:-2}" "${accel[@]}" -m "${QNX_VM_RAM:-1G}" \
         -kernel "$vm/output/ifs.bin" \
         -drive file="$vm/output/disk-qemu.vmdk",if=ide,id=drv0 \

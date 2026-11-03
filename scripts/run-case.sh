@@ -19,6 +19,7 @@ naive) MON=--naive SEN=--naive ;;
 esac
 uname -a > "$OUT/uname.txt"
 pidin info > "$OUT/pidin-info.txt" 2>&1
+pidin syspage=qtime > "$OUT/qtime.txt" 2>&1   # nsec_inc is the clock tick in ns, CPS the ClockCycles() rate
 bin/phila-monitord --scenario probe $MON --duration "$DUR" --record "$OUT/record.jsonl" \
     --latency-csv "$OUT/latency.csv" > "$OUT/monitor.log" 2>&1 &
 sleep 1

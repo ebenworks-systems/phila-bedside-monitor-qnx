@@ -5,7 +5,8 @@
 
 Prints a Markdown table per span (total, timer wake, alarm pipeline) for the
 clinical alarms of every case found, plus the technical alarms, missed sensor
-deadlines and the host's load, and optionally draws a chart on a white
+deadlines, the host's load, how long the host kept the VM's virtual CPUs
+waiting and the guest's clock tick, and optionally draws a chart on a white
 background. Only numbers read from the files are printed.
 
 Prototype for a hackathon, not a medical device, not for clinical use.
@@ -40,7 +41,7 @@ def load_case(path):
         for r in csv.DictReader(f):
             sched, sample, raised = int(r["sched_ns"]), int(r["sample_ns"]), int(r["raised_ns"])
             rows.append((r["kind"], (raised - sched) / 1000, (sample - sched) / 1000, (raised - sample) / 1000))
-    info = {"missed": None, "host_before": "-", "host_after": "-", "hog": ""}
+    info = {"missed": None, "hog": "", "qtime": None}
     try:
         log = open(os.path.join(path, "monitor.log")).read()
         m = re.search(r"(\d+) missed sensor deadlines", log)
@@ -51,13 +52,36 @@ def load_case(path):
         info["hog"] = open(os.path.join(path, "hog.log")).read().strip().splitlines()[0]
     except (OSError, IndexError):
         pass
+    host = {}
     try:
         for line in open(os.path.join(path, "host.txt")):
             k, _, v = line.partition(":")
-            info["host_" + k.split()[-1]] = v.strip()  # host_before, host_after
+            host[k.strip()] = v.strip()
+    except OSError:
+        pass
+    info["host"] = host
+    try:
+        q = open(os.path.join(path, "qtime.txt")).read()
+        inc, cps = re.search(r"nsec_inc:([0-9a-fA-F]+)", q), re.search(r"CPS:([0-9a-fA-F]+)", q)
+        if inc and cps:
+            info["qtime"] = (int(inc.group(1), 16), int(cps.group(1), 16))
     except OSError:
         pass
     return rows, info
+
+
+def vcpu_wait(host):
+    """The host's run-queue wait of the VM's virtual CPUs: total, share of their
+    time over the case, and the mean wait each time one was put on a processor."""
+    try:
+        wait, run = float(host["vcpu wait ms"]), float(host["vcpu run ms"])
+        secs, k, times = float(host["case seconds"]), int(host["vcpu threads"]), int(host["vcpu times run"])
+    except (KeyError, ValueError):
+        return "-", "-"
+    if k <= 0 or secs <= 0 or times <= 0:
+        return "-", "-"
+    share = 100 * wait / (secs * 1000 * k)
+    return f"{wait:,.1f} ms ({share:.2f}% of {k} × {secs:.0f} s)", f"{wait * 1000 / times:,.1f} µs"
 
 
 def fmt(v):
@@ -93,14 +117,28 @@ def main(argv):
                   f"{fmt(pct(v, 0.999))} | {fmt(pct(v, 1))} |")
 
     print("\n**Each run**\n")
-    print("| Case | Technical alarms | Missed sensor deadlines | Hog | Host load before | Host load after |")
-    print("|:---|---:|---:|:---|:---|:---|")
+    print("| Case | Technical alarms | Missed sensor deadlines | Hog | Started | Host load before | Host load after |")
+    print("|:---|---:|---:|:---|:---|:---|:---|")
     for c in cases:
         rows, info = data[c]
         tech = sum(1 for r in rows if r[0] == "technical")
         hog = info["hog"].replace("phila-hog: ", "") or "none"
         missed = info["missed"] if info["missed"] is not None else "-"
-        print(f"| {LABELS[c]} | {tech} | {missed} | {hog} | {info['host_before']} | {info['host_after']} |")
+        h = info["host"]
+        print(f"| {LABELS[c]} | {tech} | {missed} | {hog} | {h.get('started', '-')} | "
+              f"{h.get('host load before', '-')} | {h.get('host load after', '-')} |")
+
+    print("\n**The host's hold on the virtual machine** (run-queue wait of the VM's virtual CPU threads during each case)\n")
+    print("| Case | Host kept the virtual CPUs waiting | Mean wait each time one ran |")
+    print("|:---|---:|---:|")
+    for c in cases:
+        total, mean = vcpu_wait(data[c][1]["host"])
+        print(f"| {LABELS[c]} | {total} | {mean} |")
+
+    ticks = {data[c][1]["qtime"] for c in cases if data[c][1]["qtime"]}
+    for inc, cps in sorted(ticks):
+        print(f"\nGuest clock (pidin syspage=qtime): tick {inc / 1e6:g} ms (nsec_inc {inc} ns); "
+              f"ClockCycles() at {cps:,} per second, {1e9 / cps:.2f} ns a cycle.")
 
     if chart:
         import matplotlib
