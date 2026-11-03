@@ -110,7 +110,7 @@ The QEMU image that `mkqnximage` makes does not include OpenSSH's `sshd-auth` he
 
 ## Measuring the alarm path
 
-`scripts/latency-runs.sh` runs the probe scenario, in which the oxygen saturation of beds 1 and 2 alternates between normal and a red score on every 100 ms reading, in opposite phase, so every reading starts a new alarm on one of the two beds, ten a second, and the first reading after any stall is measured too. For every alarm the monitor stores three spans: from the reading's deadline to the sensor thread running (the timer wake), from there to the alarm on the board (the alarm pipeline), and the total. The cases are no load, two spinning threads at priority 35 (above the system's own services and below the alarm path), two at priority 10, and the same loads against the `--naive` build. `tools/latency_report.py` turns the fetched runs into tables and a chart.
+`scripts/latency-runs.sh` runs the probe scenario, in which the oxygen saturation of beds 1 and 2 alternates between normal and a red score on every 100 ms reading, in opposite phase, so every reading starts a new alarm on one of the two beds, ten a second, and the first reading after any stall is measured too. For every alarm the monitor stores three spans: from the reading's deadline to the sensor thread running (the timer wake), from there to the alarm on the board (the alarm pipeline), and the total. The cases are no load, two spinning threads at priority 35 (above the system's own services and below the alarm path), two at priority 10, and the same loads against the `--naive` build. `tools/latency_report.py` turns the fetched runs into tables and a chart. [`docs/LATENCY-REPORT.md`](docs/LATENCY-REPORT.md) has the results, the host's load and its hold on the virtual machine during each case, and what a virtual machine can and cannot show.
 
 ## Repository layout
 
@@ -123,7 +123,7 @@ The QEMU image that `mkqnximage` makes does not include OpenSSH's `sshd-auth` he
 | `tools/verify_record.py` | An independent check of the record's hash chain |
 | `scripts/` | Image build, VM control and the latency runs |
 | `qemu/snippets/` | The `mkqnximage` additions |
-| `docs/` | The codelab |
+| `docs/` | The codelab and the latency report |
 
 ## Licence
 

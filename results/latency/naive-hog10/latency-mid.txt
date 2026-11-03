@@ -1,0 +1,7 @@
+alarm latency in microseconds; total = deadline of the sensor reading to the alarm on the board
+clinical total      alarms=145 min=410.6 median=502.5 p99=7387.3 p99.9=7387.7 max=19386.2
+clinical timer_wake alarms=145 min=382.6 median=446.0 p99=3388.2 p99.9=3388.2 max=3418.4
+clinical pipeline   alarms=145 min=9.1 median=30.7 p99=4003.4 p99.9=4005.2 max=15998.0
+technical total      alarms=4 min=200540.8 median=200540.8 max=200540.8
+intake_max_priority=10 missed_deadlines=0
+record_lines=310 record_queue_high_water=7 record_dropped=0 alarm_events_dropped=0

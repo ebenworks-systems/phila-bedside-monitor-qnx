@@ -1,0 +1,6 @@
+thread       policy    prio   cpu_%    cpu_ms
+alarm        fifo        60    0.01       2.1
+supervisor   fifo        55    0.00       0.6
+recorder     sporadic    30    0.00       3.5
+intake       rr          10    0.01       2.8
+resmgr       rr          10    0.00       0.3

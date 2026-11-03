@@ -1,0 +1,6 @@
+Header size=0x000000f0, Total Size=0x00000950, Version=2.0, #Cpu=2, Type=4352
+Section:qtime offset:0x00000180 size:0x00000068
+  boot:6aea0726 CPS:000000007de57b7a period/scale:1/-9 intr:2147549184
+  flags:00000002 epoch:1970 rr_mul:0 adj count/inc:0/5716000
+  nsec_inc:000f4240
+  nsec_tod_adj:18e494cada91e880 load_max:ffffffffffffffff

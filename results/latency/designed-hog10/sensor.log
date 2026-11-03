@@ -1,0 +1,9 @@
+phila-sensord: scenario probe, seed 2026, designed priorities, high-resolution timers, 4 beds
+phila-sensord: the monitor has gone (Bad file descriptor)
+phila-sensord: the monitor has gone (Bad file descriptor)
+phila-sensord: the monitor has gone (Bad file descriptor)
+phila-sensord: the monitor has gone (Bad file descriptor)
+phila-sensord: pulse-ox sent 2946, missed deadlines 42, failed sends 1, high-resolution timer
+phila-sensord: resp     sent 299, missed deadlines 0, failed sends 1, high-resolution timer
+phila-sensord: bp       sent 299, missed deadlines 0, failed sends 1, high-resolution timer
+phila-sensord: temp     sent 299, missed deadlines 0, failed sends 1, high-resolution timer

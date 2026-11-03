@@ -243,7 +243,7 @@ The probe scenario makes the oxygen saturation of beds 1 and 2 alternate between
 
 Under the designed priorities, the hog at 35 sits below every thread on the alarm path, so the alarm path should run as if the hog were not there. Under `--naive`, the same hog sits above the whole monitor, which cannot run at all until the hog stops.
 
-A virtual machine measures its own timing only as well as the host lets it run. On a busy PC the guest's virtual CPUs wait for the host scheduler, and that wait lands in the timer wake figure. Measure with the host as quiet as you can make it, and compare the cases with each other rather than with figures from real hardware. `scripts/latency-runs.sh` records the host's load before and after each case, and `python3 tools/latency_report.py results/latency --chart latency.png` prints the tables and draws the chart.
+A virtual machine measures its own timing only as well as the host lets it run. On a busy PC the guest's virtual CPUs wait for the host scheduler, and that wait lands in the timer wake figure. Measure with the host as quiet as you can make it, and compare the cases with each other rather than with figures from real hardware. `scripts/latency-runs.sh` records the host's load before and after each case and how long the host kept the guest's virtual CPUs waiting, and `python3 tools/latency_report.py results/latency --chart latency.png` prints the tables and draws the chart. [`LATENCY-REPORT.md`](LATENCY-REPORT.md) has our results and what they do and do not show.
 
 ## 9. Clean up
 

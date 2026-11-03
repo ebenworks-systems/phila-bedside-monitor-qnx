@@ -15,6 +15,7 @@ SPDX-License-Identifier: MIT
 import csv
 import os
 import re
+import statistics
 import sys
 
 ORDER = ["designed-idle", "designed-tick-idle", "designed-hog35", "designed-hog10", "naive-hog10", "naive-hog35"]
@@ -40,7 +41,7 @@ def load_case(path):
     with open(os.path.join(path, "latency.csv"), newline="") as f:
         for r in csv.DictReader(f):
             sched, sample, raised = int(r["sched_ns"]), int(r["sample_ns"]), int(r["raised_ns"])
-            rows.append((r["kind"], (raised - sched) / 1000, (sample - sched) / 1000, (raised - sample) / 1000))
+            rows.append((r["kind"], (raised - sched) / 1000, (sample - sched) / 1000, (raised - sample) / 1000, sched))
     info = {"missed": None, "hog": "", "qtime": None}
     try:
         log = open(os.path.join(path, "monitor.log")).read()
@@ -129,6 +130,19 @@ def main(argv):
         print(f"| {LABELS[c]} | {tech} | {missed} | {hog} | {h.get('started', '-')} | "
               f"{h.get('host load before', '-')} | {h.get('host load after', '-')} |")
 
+    print("\n**Timer phase** (the median timer wake of each run of 100 clinical alarms, about ten seconds; "
+          "a lasting shift means the sensor timer kept a late phase)\n")
+    print("| Case | Lowest median | Highest median | Medians over 1 ms | Readings taken before their deadline | Earliest |")
+    print("|:---|---:|---:|---:|---:|---:|")
+    for c in cases:
+        clin = sorted((r for r in data[c][0] if r[0] in CLINICAL), key=lambda r: r[4])
+        wake = [r[2] for r in clin]
+        meds = [statistics.median(wake[i:i + 100]) for i in range(0, len(wake) - 99, 100)]
+        early = [w for w in wake if w < 0]
+        lo, hi = (fmt(min(meds)), fmt(max(meds))) if meds else ("-", "-")
+        over = f"{sum(m > 1000 for m in meds)} of {len(meds)}" if meds else "-"
+        print(f"| {LABELS[c]} | {lo} | {hi} | {over} | {len(early)} | {fmt(min(early)) if early else '-'} |")
+
     print("\n**The host's hold on the virtual machine** (run-queue wait of the VM's virtual CPU threads during each case)\n")
     print("| Case | Host kept the virtual CPUs waiting | Times put on a processor | Mean wait each time |")
     print("|:---|---:|---:|---:|")
@@ -156,9 +170,13 @@ def main(argv):
         ax.boxplot(series, vert=False, whis=(0, 100), widths=0.55,
                    medianprops={"color": "#c62828", "linewidth": 2},
                    boxprops={"color": "#37474f"}, whiskerprops={"color": "#37474f"}, capprops={"color": "#37474f"})
-        ax.set_yticks(range(1, len(cases) + 1), [LABELS[c] for c in cases])
+        def label(c):
+            total = vcpu_wait(data[c][1]["host"])[0]
+            return LABELS[c] if total == "-" else f"{LABELS[c]}\nhost held the VM {total.split(' over ')[0]}"
+        ax.set_yticks(range(1, len(cases) + 1), [label(c) for c in cases], fontsize=8)
         ax.set_xscale("log")
-        ax.set_xlabel("Deadline of the sensor reading to the alarm on the board (microseconds, log scale; whiskers are min and max)")
+        ax.set_xlabel("Deadline of the sensor reading to the alarm on the board (microseconds, log scale; whiskers are min "
+                      "and max;\nanything under 1 µs, including a reading taken before its deadline, is drawn at 1 µs)")
         ax.invert_yaxis()
         ax.grid(axis="x", color="#e0e0e0")
         ax.set_title("Alarm latency on QNX 8.0 in QEMU, per case", loc="left")

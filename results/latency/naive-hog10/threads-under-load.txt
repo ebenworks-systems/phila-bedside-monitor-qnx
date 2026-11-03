@@ -1,0 +1,6 @@
+thread       policy    prio   cpu_%    cpu_ms
+alarm        rr          10    0.02       2.7
+supervisor   rr          10    0.00       0.7
+recorder     rr          10    0.04       4.9
+intake       rr          10    0.01       2.3
+resmgr       rr          10    0.00       0.4
