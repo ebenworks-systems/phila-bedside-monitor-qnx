@@ -39,14 +39,15 @@ cd phila-bedside-monitor-qnx
 make test
 ```
 
-You should see five test programs report no failures and the record checker's self-test pass:
+You should see six test programs report no failures and the record checker's self-test pass:
 
 ```
 news2: 130 checks, 0 failed
 sha256: 5 checks, 0 failed
 record: 56 checks, 0 failed
-beds: 78 checks, 0 failed
-scenario: 24 checks, 0 failed
+beds: 136 checks, 0 failed
+scenario: 226 checks, 0 failed
+deadline: 47 checks, 0 failed
 verify_record.py: self-test passed
 ```
 
@@ -92,10 +93,10 @@ Copy the programs in and run the tests again, this time on QNX:
 ```sh
 scripts/qemu-vm.sh ssh ~/qnx-vm/phila 'mkdir -p /data/phila/bin /data/phila/runs'
 for f in build/qnx-x86_64/*; do scripts/qemu-vm.sh put ~/qnx-vm/phila "$f" /data/phila/bin/; done
-scripts/qemu-vm.sh ssh ~/qnx-vm/phila 'cd /data/phila/bin && for t in news2 sha256 record beds scenario; do ./test_$t; done'
+scripts/qemu-vm.sh ssh ~/qnx-vm/phila 'cd /data/phila/bin && for t in news2 sha256 record beds scenario deadline; do ./test_$t; done'
 ```
 
-The same 293 checks pass on QNX 8.0.
+The same 597 checks pass on QNX 8.0.
 
 ## 4. Sensors that keep time: pulses and high-resolution timers
 

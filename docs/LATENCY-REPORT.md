@@ -10,7 +10,7 @@ The six cases ran on 4 November 2026, one after another, starting between 07:12:
 
 ## Why this build changed
 
-The first version of this report came from runs on the night of 4 November, from 01:40 to 05:41 KST, on an older build. Two of its cases ran while other jobs saturated the host, which kept the virtual CPUs waiting for 164,274.5 ms and 169,374.2 ms of 308 seconds, and they showed two faults of the monitor's own.
+The first version of this report came from runs on the night of 4 November, from 01:40 to 05:41 KST, on an older build. Its tables and result files are in this repository's history, in the commit titled "Latency report from the night runs of 4 November, with the host's hold on the VM", and the figures in this section come from them. Two of its cases ran while other work saturated the host, which kept the virtual CPUs waiting for 164,274.5 ms and 169,374.2 ms of 308 seconds, and they showed two things to change in the monitor itself.
 
 Each sensor ran on one periodic timer (`timer_settime()` with an interval). After a host stall of hundreds of milliseconds, every later expiry kept the late offset: in the designed case under the priority-10 hog, 25 of 29 ten-second medians of the timer wake were over 1 ms, up to 81.7 ms. Where the offset fell just before a deadline, the sensor took the pulse as on time, because it accepted a pulse up to 1 ms early, so 24 readings were taken up to 953.7 µs before their deadline. Separately, the monitor's summary in `monitor.log` once counted one alarm more than `latency.csv`, because `finish()` wrote the file and the summary while the alarm thread was still raising alarms.
 
@@ -24,9 +24,9 @@ The six cases are the ones in the codelab, section 8: the designed monitor with 
 
 ## Where it ran
 
-The guest is QNX OS 8.0 (`procnto-smp-instr`, 8.0.0 2026/06/05) in an x86_64 QEMU image made by `mkqnximage`, with 2 virtual CPUs and 1 GB. The host is a shared workstation: an Intel Core i7-12700F (12 cores, 20 threads), Ubuntu 24.04, Linux 6.14, QEMU 8.2.2 with KVM, with the virtual CPUs not pinned to host cores. QNX keeps a 1 ms tick; the designed sensors ask for high-resolution timers (`TIMER_TOLERANCE` of 1 ns), which fire between ticks, and the tick-timer and naive cases use the default timers, which expire on the tick.
+The guest is QNX OS 8.0 (`procnto-smp-instr`, 8.0.0 2026/06/05) in an x86_64 QEMU image made by `mkqnximage`, with 2 virtual CPUs and 1 GB. The host is an Intel Core i7-12700F (12 cores, 20 threads), Ubuntu 24.04, Linux 6.14, QEMU 8.2.2 with KVM, with the virtual CPUs not pinned to host cores. QNX keeps a 1 ms tick; the designed sensors ask for high-resolution timers (`TIMER_TOLERANCE` of 1 ns), which fire between ticks, and the tick-timer and naive cases use the default timers, which expire on the tick.
 
-Each case records the host's load averages before and after it and how long the host kept the guest's two virtual CPU threads waiting for a processor (their run-queue wait from Linux's `/proc/PID/task/TID/schedstat`). The wait is the better measure: a load average counts everything runnable on a 20-thread host, while the wait is the delay the host imposed on this VM. The host's resting load is about 8, so a driver started each case only while the one-minute load was under 10 and would have started none after 07:44 KST.
+Each case records the host's load averages before and after it and how long the host kept the guest's two virtual CPU threads waiting for a processor (their run-queue wait from Linux's `/proc/PID/task/TID/schedstat`). The wait is the better measure: a load average counts everything runnable on a 20-thread host, while the wait is the delay the host imposed on this VM. The host's resting load is about 8, so each case started only while the one-minute load was under 10.
 
 ## Results
 
@@ -52,7 +52,7 @@ Each case records the host's load averages before and after it and how long the 
 | Naive, hog RR 10 | 6.83 10.53 43.64 | 3.59 6.64 32.72 | 165.3 ms over 308 s, 2 virtual CPUs | 14,092 | 11.7 µs |
 | Naive, hog FIFO 35 | 4.50 6.78 32.62 | 4.27 6.01 25.12 | 413.7 ms over 309 s, 2 virtual CPUs | 14,560 | 28.4 µs |
 
-The high five- and fifteen-minute averages before the first cases are from a long job that held the host until shortly before 07:10 KST.
+The high five- and fifteen-minute averages before the first cases are from other work on the host that ended shortly before 07:10 KST.
 
 #### Timer phase (the median timer wake of each run of 100 clinical alarms, about ten seconds)
 
@@ -97,7 +97,7 @@ The high five- and fifteen-minute averages before the first cases are from a lon
 | 100 to 110 | 61.3 ms | 80.3 ms | 57.8 µs | 216.3 µs |
 | 110 to 120 | 61.3 ms | 103.8 ms | 55.0 µs | 105.8 µs |
 
-The stalls were 332.7 ms and 176.0 ms before the fix (at 06:23:25.374 and 06:24:05.341) and 332.1 ms and 172.2 ms after it (at 07:11:25.287 and 07:12:05.303). In both runs no reading was taken before its deadline, the monitor's summary counted the same alarms as `latency.csv` (1,182 and 1,184 clinical, 8 technical each), and the missed sensor deadlines were 5 and 3.
+The stalls were 332.7 ms and 176.0 ms before the fix (at 06:23:25.374 and 06:24:05.341) and 332.1 ms and 172.2 ms after it (at 07:11:25.287 and 07:12:05.303). In both runs no reading was taken before its deadline, the monitor's summary counted the same alarms as `latency.csv` (1,182 and 1,184 clinical, 8 technical each), and the missed sensor deadlines were 5 and 3. The first two of these facts can fail only on a build that accepts a pulse before its deadline or writes the summary and the file apart: the fixed build refuses an early pulse, and writes both from one list under one lock, so for it they hold by design and the table checks them.
 
 | Case | Host load before | Host load after | Host kept the virtual CPUs waiting | Lowest median | Highest median | Medians over 1 ms |
 |:---|:---|:---|---:|---:|---:|---:|
@@ -112,7 +112,7 @@ Before the fix, the window holding the first stall has a slowest wake of 256.9 m
 
 Under the FIFO-35 hog the designed monitor's alarm pipeline had a median of 22.3 µs and a 99.9th percentile of 133.6 µs, against 27.9 µs and 446.8 µs with no load: the hog sits below every thread on the alarm path, and the path ran as if it were not there. Its total was faster than with no load too, and so was the case under the RR-10 hog, most likely because a busy guest kept the virtual CPUs from going idle. With no load they were put on a processor 106,918 times and under the RR-10 hog 32,625 times, and an idle virtual CPU waits for the host to wake it.
 
-The same FIFO-35 case holds the night's slowest designed alarm, 247.7 ms, and its 2 missed deadlines. Both came from one stall (its `latency.csv` has no other reading held up that long), which also left each bed's pulse oximeter silent for three of its periods, hence four technical alarms more than the other designed cases. The sensor and alarm threads outrank every other thread the test runs, so a delay that long most likely came from the host, and this case had the largest host wait of the six, 8,433.6 ms. Its 29 ten-second medians of the timer wake stayed between 15.4 µs and 58.7 µs, so the fixed timer went back to its deadlines after a real stall too.
+The same FIFO-35 case holds the slowest designed alarm of these runs, 247.7 ms, and its 2 missed deadlines. Both came from one stall (its `latency.csv` has no other reading held up that long), which also left each bed's pulse oximeter silent for three of its periods, hence four technical alarms more than the other designed cases. The sensor and alarm threads outrank every other thread the test runs, so a delay that long most likely came from the host, and this case had the largest host wait of the six, 8,433.6 ms. Its 29 ten-second medians of the timer wake stayed between 15.4 µs and 58.7 µs, so the fixed timer went back to its deadlines after a real stall too.
 
 With no load, the designed sensors' timer wake had a median of 65.6 µs; on tick timers it was 734.7 µs, and no sensor thread ran sooner than 658.6 µs after its deadline, because a tick timer expires on a tick. The alarm pipelines were about the same (medians of 27.9 µs and 30.9 µs), so the difference is the timer alone, and arming the timer anew for each deadline keeps the high-resolution setting.
 
@@ -142,4 +142,4 @@ python3 tools/latency_report.py results/stall-test --chart docs/stall-test.png
 scripts/qemu-vm.sh stop ~/qnx-vm/phila
 ```
 
-On a shared host, start each case only while the host is quiet. `latency-runs.sh` can wait for a load average (`QUIET_LOAD`), but after `QUIET_WAIT` seconds it runs the case anyway; these runs came from a driver that waited for a one-minute load under 10 before each case and started none after a fixed time. The result folders hold every case's files as fetched from the guest, with `host.txt` holding the host's load, its hold on the virtual CPUs and, for the stall test, the stalls. The record files (`record.jsonl`, up to about 1.9 MB a case) are left out of the repository.
+On a shared host, start each case only while the host is quiet. `latency-runs.sh` can wait for a load average (`QUIET_LOAD`), but after `QUIET_WAIT` seconds it runs the case anyway; these runs waited for a one-minute load under 10 before each case. The result folders hold every case's files as fetched from the guest, with `host.txt` holding the host's load, its hold on the virtual CPUs and, for the stall test, the stalls. The record files (`record.jsonl`, up to about 1.9 MB a case) are left out of the repository.

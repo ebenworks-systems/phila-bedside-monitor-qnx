@@ -20,6 +20,7 @@ if [ ! -f "$key" ]; then
     ssh-keygen -q -t ed25519 -N '' -C 'phila-qnx-vm (local only)' -f "${key%.pub}"
     echo "made the key pair ${key%.pub}"
 fi
+key="$(cd "$(dirname "$key")" && pwd)/$(basename "$key")"   # absolute: mkqnximage runs from the VM folder
 mkdir -p "$vm/local/snippets"
 cp "$here"/qemu/snippets/*.custom "$vm/local/snippets/"
 cd "$vm"

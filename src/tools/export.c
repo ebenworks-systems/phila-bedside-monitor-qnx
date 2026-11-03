@@ -127,7 +127,14 @@ int main(int argc, char **argv)
         return 3;
     }
 
-    FILE *out = argc == 3 ? fopen(argv[2], "w") : stdout;
+    /* A file is written under a temporary name and renamed once it is complete, so a failure
+     * never leaves a half document under the real name. */
+    char tmp_path[4096] = "";
+    if (argc == 3 && snprintf(tmp_path, sizeof tmp_path, "%s.tmp", argv[2]) >= (int)sizeof tmp_path) {
+        fprintf(stderr, "phila-export: output path too long\n");
+        return 1;
+    }
+    FILE *out = argc == 3 ? fopen(tmp_path, "w") : stdout;
     if (out == NULL) {
         perror(argv[2]);
         return 1;
@@ -151,12 +158,18 @@ int main(int argc, char **argv)
     for (int sec = 0; sec < 3; sec++) {
         fprintf(out, "  \"%s\": [", names[sec]);
         rewind(in);
-        unsigned long written = 0;
-        while (fgets(line, sizeof line, in) != NULL) {
+        unsigned long written = 0, seen = 0;
+        /* Only the lines pass 1 verified: the monitor may still be appending to the file. */
+        while (seen < lines && fgets(line, sizeof line, in) != NULL) {
+            seen++;
             line[strcspn(line, "\n")] = '\0';
             int n = parse(line, p, MAX_PAIRS);
             if (n < 0) {
                 fprintf(stderr, "phila-export: cannot read a verified line; stopping\n");
+                if (out != stdout) {
+                    fclose(out);
+                    remove(tmp_path);
+                }
                 return 1;
             }
             if (strcmp(val(p, n, "kind"), sections[sec]) != 0) continue;
@@ -166,8 +179,9 @@ int main(int argc, char **argv)
         fprintf(out, "%s]%s\n", counts[sec] ? "\n  " : "", sec < 2 ? "," : "");
     }
     fprintf(out, "}\n");
-    if (out != stdout && fclose(out) != 0) {
+    if (out != stdout && (fclose(out) != 0 || rename(tmp_path, argv[2]) != 0)) {
         perror(argv[2]);
+        remove(tmp_path);
         return 1;
     }
     fprintf(stderr, "phila-export: %lu lines verified; %lu observations, %lu alarms, %lu events\n", lines, obs, alarms,

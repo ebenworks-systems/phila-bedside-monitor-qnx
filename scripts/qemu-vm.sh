@@ -71,6 +71,11 @@ stop)
     if [ -S "$vm/monitor.sock" ]; then
         echo quit | socat - UNIX-CONNECT:"$vm/monitor.sock" >/dev/null 2>&1 || true
     fi
+    # If the quit did not reach QEMU (no socat, no socket), end it by its process id.
+    if [ -f "$vm/qemu.pid" ] && p="$(cat "$vm/qemu.pid")" && [ -d "/proc/$p" ]; then
+        sleep 2
+        [ -d "/proc/$p" ] && kill "$p" 2>/dev/null || true
+    fi
     rm -f "$vm/qemu.pid" "$vm/monitor.sock"
     echo stopped
     ;;

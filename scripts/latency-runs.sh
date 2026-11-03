@@ -78,6 +78,13 @@ wait_quiet() {
     done
 }
 
+# A case still running in the guest (an interrupted run) would share the monitor's name, so none starts then.
+running="$("$q" ssh "$vm" '{ pidin -p phila-monitord -f a; pidin -p phila-sensord -f a; true; }' 2>/dev/null || true)"
+if grep -q '[0-9]' <<< "$running"; then
+    echo "a phila-monitord or phila-sensord is still running in the guest; wait for it or slay it first" >&2
+    exit 1
+fi
+
 for c in "${cases[@]}"; do
     wait_quiet
     load_before="$(cut -d' ' -f1-3 /proc/loadavg)"
@@ -90,6 +97,10 @@ for c in "${cases[@]}"; do
         if "$q" ssh "$vm" "test -f /data/phila/runs/$c/done" 2>/dev/null; then break; fi
         sleep 5
     done
+    if ! "$q" ssh "$vm" "test -f /data/phila/runs/$c/done" 2>/dev/null; then
+        echo "case $c did not finish within $((secs + 8 + 300)) s; stopping so the next case does not start on top of it" >&2
+        exit 1
+    fi
     read -r run1 wait1 n1 k pid1 <<< "$(vcpu_stat)"; t1="$(date +%s.%N)"
     if [ "$k" -eq 0 ] || [ "$k" != "$k0" ] || [ "$pid1" != "$pid0" ]; then
         echo "  the VM's virtual CPU threads changed during the case (QEMU $pid0 with $k0, then $pid1 with $k); no host wait recorded" >&2

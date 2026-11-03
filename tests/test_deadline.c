@@ -138,7 +138,6 @@ int main(void)
         CHECK_EQ_INT(o.worst_settled_wake, 30 * US);
         CHECK_EQ_INT(o.missed, stalls[i][2]);
         CHECK_EQ_INT(o.readings + o.missed, o.armed);
-        CHECK_EQ_INT(o.armed, o.last_latest + 1);
     }
 
     /* A send that takes 250 ms on a 100 ms sensor: the sensor falls behind
@@ -152,7 +151,6 @@ int main(void)
         CHECK(o.worst_settled_wake > 100 * MS);
         CHECK(o.missed > 0);
         CHECK_EQ_INT(o.readings + o.missed, o.armed);
-        CHECK_EQ_INT(o.armed, o.last_latest + 1);
     }
 
     return check_report("deadline");

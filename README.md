@@ -29,7 +29,7 @@ The monitor's threads and their priorities are the design. On QNX a higher numbe
 | 30, then 5 | recorder | `SCHED_SPORADIC`: priority 30 for 10 ms of CPU in every 100 ms, then 5 until the budget refills |
 | client's | resource manager | serves `/dev/phila/*` at the priority of the program that asked |
 
-The alarm path never waits on the disk. The recorder takes entries from a queue and writes them when it can, and the queue's high-water mark is reported, so a slow disk shows up as a number rather than a late alarm. Both locks use priority inheritance, so a low-priority thread holding a lock that the alarm thread needs is raised until it lets go.
+The alarm path never waits on the disk. The recorder takes entries from a queue and writes them when it can, and the queue's high-water mark is reported, so a slow disk shows up as a number rather than a late alarm. All three locks use priority inheritance, so a low-priority thread holding a lock that the alarm thread needs is raised until it lets go.
 
 Capping the recorder's share of the CPU is the job of QNX adaptive partitioning, but QNX's own documentation for the 8.0 IDE says "QNX OS 8.0 does not support adaptive partitioning" ([APS View](https://www.qnx.com/developers/docs/8.0/com.qnx.doc.ide.userguide/topic/APS_view.html)), so the recorder runs under sporadic scheduling instead, and the supervisor measures every thread's CPU time with the per-thread CPU clocks (`pthread_getcpuclockid()`), which `/dev/phila/threads` shows.
 
